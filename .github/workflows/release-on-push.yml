@@ -56,6 +56,7 @@ jobs:
           REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
+          export PLAYWRIGHT_BROWSERS_PATH=0
 
           python - <<'PY' > /tmp/pushed-commits.txt
           import json
@@ -102,6 +103,7 @@ jobs:
 
             python -m pip install -e ".[dev]"
             python -m pytest
+            python -m playwright install chromium
             python scripts/build_binary.py --clean --name "$BINARY_NAME"
 
             mkdir -p "$OUTPUT_DIR"
@@ -211,8 +213,8 @@ jobs:
 
           Notes:
           - Built with PyInstaller.
-          - Browser commands require Playwright Chromium on the target machine.
-          - Credentials, local profiles, .env files, and debug screenshots are not included.
+          - Playwright Chromium is bundled into the executable.
+          - Credentials, local profiles, and debug screenshots are not included.
           EOF
 
             if gh release view "$RELEASE_TAG" --repo "$REPOSITORY" >/dev/null 2>&1; then

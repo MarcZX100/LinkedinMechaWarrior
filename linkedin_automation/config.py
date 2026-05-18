@@ -4,7 +4,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from dotenv import load_dotenv
+from .runtime import default_state_dir
 
 
 def _as_bool(value: str | None, default: bool = False) -> bool:
@@ -34,14 +34,14 @@ class AppConfig:
     allow_auto_publish: bool
 
     @classmethod
-    def from_env(cls, env_file: str | Path | None = ".env") -> "AppConfig":
-        if env_file:
-            load_dotenv(env_file)
+    def from_env(cls, env_file: str | Path | None = None) -> "AppConfig":
+        del env_file
+        state_dir = default_state_dir()
 
         return cls(
             linkedin_url=os.getenv("LINKEDIN_URL", "https://www.linkedin.com/feed/"),
-            browser_profile_dir=Path(os.getenv("BROWSER_PROFILE_DIR", ".browser-profile")),
-            debug_dir=Path(os.getenv("DEBUG_DIR", "debug")),
+            browser_profile_dir=Path(os.getenv("BROWSER_PROFILE_DIR", state_dir / "browser-profile")),
+            debug_dir=Path(os.getenv("DEBUG_DIR", state_dir / "debug")),
             headless=_as_bool(os.getenv("HEADLESS"), default=False),
             default_timeout_ms=_as_int("DEFAULT_TIMEOUT_MS", 30000),
             max_post_chars=_as_int("MAX_POST_CHARS", 3000),

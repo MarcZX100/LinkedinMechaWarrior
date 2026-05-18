@@ -7,7 +7,8 @@ El objetivo es asistencia personal con revision humana. La herramienta no scrape
 ## Que hace
 
 - Genera un borrador de post desde una idea o texto base.
-- Abre LinkedIn en Chromium con una sesion persistente guardada en `.browser-profile/`.
+- Abre LinkedIn en Chromium desde el propio binario compilado.
+- Guarda la sesion persistente en una carpeta de datos de usuario del sistema.
 - Permite iniciar sesion desde la terminal con `auth` o `login`. La contrasena se pide con prompt seguro.
 - Puede guardar la contrasena en el llavero seguro del sistema usando `keyring`, solo si lo pides con `--save-password`.
 - Mantiene fallback manual para 2FA, captcha, checkpoints o cambios de UI.
@@ -22,26 +23,64 @@ El objetivo es asistencia personal con revision humana. La herramienta no scrape
 
 - LinkedIn cambia selectores y textos de interfaz con frecuencia. Si el compositor no aparece, la herramienta guarda screenshots en `debug/`.
 - El login desde CLI rellena el formulario en el navegador. LinkedIn puede requerir pasos manuales.
-- La contrasena solo se guarda si usas `--save-password`, y se guarda mediante el llavero del sistema, no en `.env` ni en archivos del proyecto.
+- La contrasena solo se guarda si usas `--save-password`, y se guarda mediante el llavero del sistema, no en archivos del proyecto.
 - El generador de posts es local y determinista; no llama a modelos externos.
 - El modo `publish` existe solo como opcion protegida. La ruta recomendada es preparar el post y publicarlo manualmente tras revisarlo.
 
-## Instalacion
+## Descargar
 
-Requisitos:
+Para usuario final, descarga el binario desde la pagina de releases:
 
-- Python 3.11+
-- Playwright
-- Chromium instalado por Playwright
-- Un backend de llavero del sistema si quieres usar `--save-password`
+- Linux: `linkedin-cli-linux`
+- Windows: `linkedin-cli.exe`
+
+No necesitas instalar Python, Playwright, Chromium ni crear un `.env`.
+
+En Linux, dale permisos de ejecucion una vez:
+
+```bash
+chmod +x linkedin-cli-linux
+./linkedin-cli-linux --help
+```
+
+En Windows:
+
+```powershell
+.\linkedin-cli.exe --help
+```
+
+## Primer Uso
+
+Configura tu cuenta una vez:
+
+```bash
+./linkedin-cli-linux auth --email tu-email@example.com --save-password
+```
+
+En Windows:
+
+```powershell
+.\linkedin-cli.exe auth --email tu-email@example.com --save-password
+```
+
+El CLI abre LinkedIn en un navegador Chromium incluido en el binario. Si LinkedIn pide 2FA, captcha o checkpoint, completa ese paso en la ventana del navegador y vuelve a la terminal.
+
+Despues puedes trabajar directamente:
+
+```bash
+./linkedin-cli-linux draft --idea "Lo que aprendi automatizando procesos internos con IA"
+./linkedin-cli-linux prepare-post --text-file post.txt
+```
+
+## Instalacion Para Desarrollo
+
+Solo necesitas esto si vas a modificar el codigo:
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 pip install -e .
-python -m playwright install chromium
-cp .env.example .env
 ```
 
 Si quieres generar un ejecutable compilado, instala tambien las dependencias de build:
@@ -50,21 +89,21 @@ Si quieres generar un ejecutable compilado, instala tambien las dependencias de 
 pip install -e ".[build]"
 ```
 
-## Configuracion
+## Configuracion Avanzada
 
-Edita `.env` si quieres cambiar rutas o limites:
+No hace falta configurar nada para usar el binario. Si quieres cambiar rutas o limites, puedes usar variables de entorno:
 
 ```bash
 LINKEDIN_URL=https://www.linkedin.com/feed/
-BROWSER_PROFILE_DIR=.browser-profile
-DEBUG_DIR=debug
+BROWSER_PROFILE_DIR=/ruta/a/perfil
+DEBUG_DIR=/ruta/a/debug
 HEADLESS=false
 DEFAULT_TIMEOUT_MS=30000
 MAX_POST_CHARS=3000
 ALLOW_AUTO_PUBLISH=false
 ```
 
-No pongas credenciales en `.env`. La contrasena se pide en terminal cuando ejecutas `auth` o `login`; si usas `--save-password`, se guarda con `keyring` en el llavero seguro del sistema. La sesion tambien se conserva en el perfil persistente del navegador.
+No pongas credenciales en variables de entorno. La contrasena se pide en terminal cuando ejecutas `auth` o `login`; si usas `--save-password`, se guarda con `keyring` en el llavero seguro del sistema. La sesion tambien se conserva en el perfil persistente del navegador.
 
 ## Uso
 
@@ -215,7 +254,6 @@ tests/
   test_config.py
   test_credentials.py
   test_post_generator.py
-.env.example
 pyproject.toml
 requirements.txt
 ```
@@ -265,15 +303,9 @@ Uso del binario:
 
 Notas importantes:
 
-- El ejecutable no incluye `.env`, `.browser-profile/`, `debug/`, contrasenas ni sesiones.
-- Chromium de Playwright no se empaqueta dentro del binario. Debe estar instalado en la maquina donde ejecutes comandos de navegador.
-- En la maquina de build o destino, instala Chromium con:
-
-```bash
-python -m playwright install chromium
-```
-
-- Si distribuyes solo el binario a otra maquina sin Python, tendras que provisionar tambien los navegadores de Playwright o usar una instalacion local de Python para ejecutar `playwright install chromium`.
+- El ejecutable incluye Chromium de Playwright.
+- El ejecutable no incluye contrasenas, sesiones ni screenshots.
+- La sesion se crea en la carpeta de datos de usuario de la maquina final.
 - `--save-password` sigue usando el llavero seguro del sistema de la maquina donde se ejecuta el binario.
 
 Tambien puedes construir en modo carpeta, mas facil de inspeccionar y depurar:
@@ -307,6 +339,7 @@ El workflow:
 
 - ejecuta tests antes de empaquetar
 - compila con PyInstaller en `ubuntu-latest` y `windows-latest`
+- incluye Chromium de Playwright dentro del ejecutable
 - sube solo los binarios compilados como assets del release
 - actualiza el release si se re-ejecuta para el mismo commit
 

@@ -35,3 +35,14 @@ def test_config_rejects_invalid_integer(monkeypatch):
 
     with pytest.raises(ValueError):
         AppConfig.from_env(env_file=None)
+
+
+def test_config_defaults_do_not_require_dotenv(monkeypatch, tmp_path):
+    monkeypatch.delenv("BROWSER_PROFILE_DIR", raising=False)
+    monkeypatch.delenv("DEBUG_DIR", raising=False)
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+
+    config = AppConfig.from_env(env_file=None)
+
+    assert config.browser_profile_dir == tmp_path / "linkedin-mecha-warrior" / "browser-profile"
+    assert config.debug_dir == tmp_path / "linkedin-mecha-warrior" / "debug"
