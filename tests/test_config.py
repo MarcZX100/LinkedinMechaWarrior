@@ -1,4 +1,5 @@
 import pytest
+import sys
 
 from linkedin_automation.config import AppConfig
 
@@ -40,9 +41,14 @@ def test_config_rejects_invalid_integer(monkeypatch):
 def test_config_defaults_do_not_require_dotenv(monkeypatch, tmp_path):
     monkeypatch.delenv("BROWSER_PROFILE_DIR", raising=False)
     monkeypatch.delenv("DEBUG_DIR", raising=False)
-    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+    if sys.platform == "win32":
+        monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+        expected_state_dir = tmp_path / "LinkedinMechaWarrior"
+    else:
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        expected_state_dir = tmp_path / "linkedin-mecha-warrior"
 
     config = AppConfig.from_env(env_file=None)
 
-    assert config.browser_profile_dir == tmp_path / "linkedin-mecha-warrior" / "browser-profile"
-    assert config.debug_dir == tmp_path / "linkedin-mecha-warrior" / "debug"
+    assert config.browser_profile_dir == expected_state_dir / "browser-profile"
+    assert config.debug_dir == expected_state_dir / "debug"
