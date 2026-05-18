@@ -106,21 +106,21 @@ jobs:
             cp .env.example "release/${PACKAGE_NAME}/"
 
             cat > "release/${PACKAGE_NAME}/INSTALL.txt" <<EOF
-LinkedIn CLI automated build
+          LinkedIn CLI automated build
 
-Commit: ${COMMIT_SHA}
-Repository: ${REPOSITORY}
-Platform: ${PLATFORM}
+          Commit: ${COMMIT_SHA}
+          Repository: ${REPOSITORY}
+          Platform: ${PLATFORM}
 
-Run:
-  ${EXECUTABLE_NAME} --help
+          Run:
+            ${EXECUTABLE_NAME} --help
 
-Browser commands require Playwright Chromium to be available on this machine.
-If you use a Python environment, install it with:
-  python -m playwright install chromium
+          Browser commands require Playwright Chromium to be available on this machine.
+          If you use a Python environment, install it with:
+            python -m playwright install chromium
 
-This archive does not include credentials, .env, .browser-profile, or debug screenshots.
-EOF
+          This archive does not include credentials, .env, .browser-profile, or debug screenshots.
+          EOF
 
             if [ "$RUNNER_OS" = "Windows" ]; then
               powershell -NoProfile -Command "Compress-Archive -Path 'release/${PACKAGE_NAME}' -DestinationPath 'release-assets/${PACKAGE_NAME}.zip' -Force"
@@ -197,17 +197,17 @@ EOF
 
             NOTES_FILE="$(mktemp)"
             cat > "$NOTES_FILE" <<EOF
-Automated release for commit \`${COMMIT_SHA}\`.
+          Automated release for commit \`${COMMIT_SHA}\`.
 
-Assets:
-- Linux x86_64 tar.gz
-- Windows x86_64 zip
+          Assets:
+          - Linux x86_64 tar.gz
+          - Windows x86_64 zip
 
-Notes:
-- Built with PyInstaller.
-- Browser commands require Playwright Chromium on the target machine.
-- Credentials, local profiles, .env files, and debug screenshots are not included.
-EOF
+          Notes:
+          - Built with PyInstaller.
+          - Browser commands require Playwright Chromium on the target machine.
+          - Credentials, local profiles, .env files, and debug screenshots are not included.
+          EOF
 
             if gh release view "$RELEASE_TAG" --repo "$REPOSITORY" >/dev/null 2>&1; then
               gh release edit "$RELEASE_TAG" \
