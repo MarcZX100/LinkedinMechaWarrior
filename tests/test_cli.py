@@ -4,14 +4,26 @@ from linkedin_automation.cli import build_parser
 def test_auth_and_login_commands_are_available():
     parser = build_parser()
 
-    auth_args = parser.parse_args(["auth", "--email", "me@example.com", "--keep-open"])
+    auth_args = parser.parse_args(["auth", "--email", "me@example.com", "--save-password", "--keep-open"])
     login_args = parser.parse_args(["login", "--manual"])
 
     assert auth_args.command == "auth"
     assert auth_args.email == "me@example.com"
+    assert auth_args.save_password is True
+    assert auth_args.forget_password is False
     assert auth_args.keep_open is True
     assert login_args.command == "login"
     assert login_args.manual is True
+
+
+def test_login_forget_password_flag_is_available():
+    parser = build_parser()
+
+    args = parser.parse_args(["login", "--email", "me@example.com", "--forget-password"])
+
+    assert args.command == "login"
+    assert args.email == "me@example.com"
+    assert args.forget_password is True
 
 
 def test_status_command_is_available():

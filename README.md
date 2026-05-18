@@ -8,7 +8,8 @@ El objetivo es asistencia personal con revision humana. La herramienta no scrape
 
 - Genera un borrador de post desde una idea o texto base.
 - Abre LinkedIn en Chromium con una sesion persistente guardada en `.browser-profile/`.
-- Permite iniciar sesion desde la terminal con `auth` o `login`. La contrasena se pide con prompt seguro y no se guarda.
+- Permite iniciar sesion desde la terminal con `auth` o `login`. La contrasena se pide con prompt seguro.
+- Puede guardar la contrasena en el llavero seguro del sistema usando `keyring`, solo si lo pides con `--save-password`.
 - Mantiene fallback manual para 2FA, captcha, checkpoints o cambios de UI.
 - Permite consultar estado de sesion con `status`.
 - Abre el compositor de LinkedIn y pega el texto para revision manual.
@@ -20,7 +21,8 @@ El objetivo es asistencia personal con revision humana. La herramienta no scrape
 ## Limitaciones
 
 - LinkedIn cambia selectores y textos de interfaz con frecuencia. Si el compositor no aparece, la herramienta guarda screenshots en `debug/`.
-- El login desde CLI rellena el formulario en el navegador, pero no guarda credenciales. LinkedIn puede requerir pasos manuales.
+- El login desde CLI rellena el formulario en el navegador. LinkedIn puede requerir pasos manuales.
+- La contrasena solo se guarda si usas `--save-password`, y se guarda mediante el llavero del sistema, no en `.env` ni en archivos del proyecto.
 - El generador de posts es local y determinista; no llama a modelos externos.
 - El modo `publish` existe solo como opcion protegida. La ruta recomendada es preparar el post y publicarlo manualmente tras revisarlo.
 
@@ -31,6 +33,7 @@ Requisitos:
 - Python 3.11+
 - Playwright
 - Chromium instalado por Playwright
+- Un backend de llavero del sistema si quieres usar `--save-password`
 
 ```bash
 python -m venv .venv
@@ -55,7 +58,7 @@ MAX_POST_CHARS=3000
 ALLOW_AUTO_PUBLISH=false
 ```
 
-No pongas credenciales en `.env`. La contrasena se pide en terminal cuando ejecutas `auth` o `login`, y la sesion se conserva en el perfil persistente del navegador.
+No pongas credenciales en `.env`. La contrasena se pide en terminal cuando ejecutas `auth` o `login`; si usas `--save-password`, se guarda con `keyring` en el llavero seguro del sistema. La sesion tambien se conserva en el perfil persistente del navegador.
 
 ## Uso
 
@@ -105,7 +108,31 @@ linkedin-cli auth --email tu-email@example.com --keep-open
 El comando pedira la contrasena con un prompt seguro:
 
 ```text
-LinkedIn password (not stored):
+LinkedIn password:
+```
+
+Guardar la contrasena de forma segura en el llavero del sistema tras un login correcto:
+
+```bash
+linkedin-cli auth --email tu-email@example.com --save-password
+```
+
+Despues, puedes iniciar sesion usando la contrasena guardada:
+
+```bash
+linkedin-cli auth --email tu-email@example.com
+```
+
+Si omites `--email`, el CLI intenta usar la ultima cuenta guardada en el llavero:
+
+```bash
+linkedin-cli auth
+```
+
+Borrar la contrasena guardada:
+
+```bash
+linkedin-cli auth --email tu-email@example.com --forget-password
 ```
 
 Tambien puedes usar el alias `login`:
@@ -186,6 +213,7 @@ Si LinkedIn cambia la interfaz, el comando `prepare-post` puede fallar con error
 - editor no encontrado
 - timeout
 - post demasiado largo
+- llavero seguro no disponible al usar `--save-password`
 
 Cuando hay un fallo de navegador, se intenta guardar una captura en `debug/` para revisar que estaba mostrando LinkedIn.
 

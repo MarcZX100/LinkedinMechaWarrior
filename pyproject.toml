@@ -9,6 +9,7 @@ description = "Local LinkedIn drafting assistant with Playwright and human revie
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "keyring>=25.0.0",
     "playwright>=1.44.0",
     "python-dotenv>=1.0.1",
 ]

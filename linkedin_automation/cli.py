@@ -8,6 +8,7 @@ from pathlib import Path
 
 from .browser import BrowserSession
 from .config import load_config
+from .credentials import CredentialStore, CredentialStoreError
 from .linkedin import LinkedInClient, LinkedInAutomationError
 from .post_generator import LENGTHS, TONES, PostGenerationError, generate_post
 from .utils import configure_logging, normalize_text, read_text_file, require_interactive_confirmation, write_text_file
@@ -37,11 +38,15 @@ def build_parser() -> argparse.ArgumentParser:
     auth = subparsers.add_parser("auth", help="Log in to LinkedIn using terminal prompts and the persistent browser.")
     auth.add_argument("--email", help="LinkedIn email. If omitted, it is prompted in the terminal.")
     auth.add_argument("--manual", action="store_true", help="Skip credential prompts and log in manually in the browser.")
+    auth.add_argument("--save-password", action="store_true", help="Save the password in the system keyring after a successful login.")
+    auth.add_argument("--forget-password", action="store_true", help="Delete the saved password for this account and exit.")
     auth.add_argument("--keep-open", action="store_true", help="Wait for Enter before closing the browser.")
 
     login = subparsers.add_parser("login", help="Alias for auth.")
     login.add_argument("--email", help="LinkedIn email. If omitted, it is prompted in the terminal.")
     login.add_argument("--manual", action="store_true", help="Skip credential prompts and log in manually in the browser.")
+    login.add_argument("--save-password", action="store_true", help="Save the password in the system keyring after a successful login.")
+    login.add_argument("--forget-password", action="store_true", help="Delete the saved password for this account and exit.")
     login.add_argument("--keep-open", action="store_true", help="Wait for Enter before closing the browser.")
 
     prepare = subparsers.add_parser("prepare-post", help="Open LinkedIn and place text in the post editor.")
@@ -82,7 +87,7 @@ def main(argv: list[str] | None = None) -> int:
             return asyncio.run(_cmd_prepare_post(args, config))
         if args.command == "publish":
             return asyncio.run(_cmd_publish(args, config))
-    except (ValueError, PostGenerationError, LinkedInAutomationError) as exc:
+    except (ValueError, PostGenerationError, LinkedInAutomationError, CredentialStoreError) as exc:
         logging.error("%s", exc)
         return 1
     except KeyboardInterrupt:
@@ -138,6 +143,20 @@ async def _cmd_status(args: argparse.Namespace, config) -> int:
 
 
 async def _cmd_auth(args: argparse.Namespace, config) -> int:
+    if args.save_password and args.forget_password:
+        raise ValueError("Use either --save-password or --forget-password, not both.")
+    if args.manual and args.save_password:
+        raise ValueError("--save-password cannot be used with --manual because no password is entered in the CLI.")
+
+    credential_store = CredentialStore()
+    if args.save_password:
+        credential_store.ensure_available()
+    if args.forget_password:
+        email = _resolve_auth_email(args, credential_store)
+        credential_store.delete_password(email)
+        print(f"Saved LinkedIn password removed for {email}.")
+        return 0
+
     async with BrowserSession(config) as browser:
         page = await browser.new_page()
         client = LinkedInClient(page, config)
@@ -147,16 +166,43 @@ async def _cmd_auth(args: argparse.Namespace, config) -> int:
         elif args.manual:
             await client.ensure_authenticated()
         else:
-            email = args.email or input("LinkedIn email: ").strip()
-            password = getpass.getpass("LinkedIn password (not stored): ")
+            email = _resolve_auth_email(args, credential_store)
+            password = _get_saved_password(email, credential_store)
+            if password:
+                logging.info("Using saved LinkedIn password from the system keyring")
+            else:
+                password = getpass.getpass("LinkedIn password: ")
             if not email or not password:
                 raise ValueError("Email and password are required for CLI login. Use --manual for browser-only login.")
             await client.login_with_credentials(email, password)
+            if args.save_password:
+                credential_store.set_password(email, password)
+                print("Password saved in the system keyring.")
         print("\nLinkedIn session is ready in the persistent browser profile.")
         logging.info("LinkedIn authentication verified")
         if args.keep_open:
             input("Press Enter to close the browser...")
     return 0
+
+
+def _resolve_auth_email(args: argparse.Namespace, credential_store: CredentialStore) -> str:
+    if args.email:
+        return args.email.strip()
+    try:
+        email = credential_store.get_default_email()
+    except CredentialStoreError:
+        email = None
+    if email:
+        return email.strip()
+    return input("LinkedIn email: ").strip()
+
+
+def _get_saved_password(email: str, credential_store: CredentialStore) -> str | None:
+    try:
+        return credential_store.get_password(email)
+    except CredentialStoreError:
+        logging.info("No usable system keyring detected; asking for password interactively")
+        return None
 
 
 async def _cmd_prepare_post(args: argparse.Namespace, config) -> int:
