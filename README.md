@@ -200,15 +200,20 @@ linkedin_automation/
   browser.py
   cli.py
   config.py
+  credentials.py
   linkedin.py
   post_generator.py
   utils.py
+.github/
+  workflows/
+    release-on-push.yml
 scripts/
   build_binary.py
   linkedin_cli_entry.py
 tests/
   test_cli.py
   test_config.py
+  test_credentials.py
   test_post_generator.py
 .env.example
 pyproject.toml
@@ -275,4 +280,33 @@ Tambien puedes construir en modo carpeta, mas facil de inspeccionar y depurar:
 
 ```bash
 python scripts/build_binary.py --onedir --clean
+```
+
+## Releases Automaticos
+
+El repositorio incluye un workflow de GitHub Actions en `.github/workflows/release-on-push.yml`.
+
+Cada `push` a una rama compila todos los commits incluidos en ese push y crea un release por commit con tag:
+
+```text
+build-<sha-del-commit>
+```
+
+Cada release incluye dos assets:
+
+- Linux x86_64: `linkedin-cli-linux-x86_64-<short-sha>.tar.gz`
+- Windows x86_64: `linkedin-cli-windows-x86_64-<short-sha>.zip`
+
+El workflow:
+
+- ejecuta tests antes de empaquetar
+- compila con PyInstaller en `ubuntu-latest` y `windows-latest`
+- no incluye `.env`, `.browser-profile/`, contrasenas ni screenshots
+- actualiza el release si se re-ejecuta para el mismo commit
+
+Para que pueda crear releases, el workflow usa:
+
+```yaml
+permissions:
+  contents: write
 ```

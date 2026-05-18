@@ -1,0 +1,230 @@
+name: Build and release every pushed commit
+
+on:
+  push:
+    branches:
+      - "**"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-on-push-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    if: github.event.deleted == false
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux-x86_64
+            binary_name: linkedin-cli-linux-x86_64
+            executable_name: linkedin-cli
+          - os: windows-latest
+            platform: windows-x86_64
+            binary_name: linkedin-cli-windows-x86_64
+            executable_name: linkedin-cli.exe
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Upgrade packaging tools
+        shell: bash
+        run: python -m pip install --upgrade pip
+
+      - name: Build pushed commits
+        shell: bash
+        env:
+          BINARY_NAME: ${{ matrix.binary_name }}
+          EXECUTABLE_NAME: ${{ matrix.executable_name }}
+          PLATFORM: ${{ matrix.platform }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          python - <<'PY' > /tmp/pushed-commits.txt
+          import json
+          import os
+
+          with open(os.environ["GITHUB_EVENT_PATH"], encoding="utf-8") as event_file:
+              event = json.load(event_file)
+
+          for commit in event.get("commits", []):
+              commit_id = commit.get("id")
+              if commit_id:
+                  print(commit_id)
+          PY
+          if [ ! -s /tmp/pushed-commits.txt ]; then
+            printf '%s\n' "$GITHUB_SHA" > /tmp/pushed-commits.txt
+          fi
+
+          rm -rf release-assets
+          mkdir -p release-assets
+
+          while IFS= read -r COMMIT_SHA; do
+            if [ -z "$COMMIT_SHA" ]; then
+              continue
+            fi
+
+            SHORT_SHA="${COMMIT_SHA:0:12}"
+            PACKAGE_NAME="linkedin-cli-${PLATFORM}-${SHORT_SHA}"
+
+            echo "::group::Build ${PLATFORM} ${SHORT_SHA}"
+            git checkout --force "$COMMIT_SHA"
+
+            python -m pip install -e ".[dev]"
+            python -m pytest
+            python scripts/build_binary.py --clean --name "$BINARY_NAME"
+
+            rm -rf release
+            mkdir -p "release/${PACKAGE_NAME}"
+
+            if [ "$RUNNER_OS" = "Windows" ]; then
+              cp "dist/${BINARY_NAME}.exe" "release/${PACKAGE_NAME}/${EXECUTABLE_NAME}"
+            else
+              cp "dist/${BINARY_NAME}" "release/${PACKAGE_NAME}/${EXECUTABLE_NAME}"
+              chmod +x "release/${PACKAGE_NAME}/${EXECUTABLE_NAME}"
+            fi
+
+            cp README.md "release/${PACKAGE_NAME}/"
+            cp LICENSE "release/${PACKAGE_NAME}/"
+            cp .env.example "release/${PACKAGE_NAME}/"
+
+            cat > "release/${PACKAGE_NAME}/INSTALL.txt" <<EOF
+LinkedIn CLI automated build
+
+Commit: ${COMMIT_SHA}
+Repository: ${REPOSITORY}
+Platform: ${PLATFORM}
+
+Run:
+  ${EXECUTABLE_NAME} --help
+
+Browser commands require Playwright Chromium to be available on this machine.
+If you use a Python environment, install it with:
+  python -m playwright install chromium
+
+This archive does not include credentials, .env, .browser-profile, or debug screenshots.
+EOF
+
+            if [ "$RUNNER_OS" = "Windows" ]; then
+              powershell -NoProfile -Command "Compress-Archive -Path 'release/${PACKAGE_NAME}' -DestinationPath 'release-assets/${PACKAGE_NAME}.zip' -Force"
+            else
+              tar -czf "release-assets/${PACKAGE_NAME}.tar.gz" -C release "$PACKAGE_NAME"
+            fi
+
+            echo "::endgroup::"
+          done < /tmp/pushed-commits.txt
+
+      - name: Upload build assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets-${{ matrix.platform }}
+          path: release-assets/*
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub releases
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event.deleted == false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download build assets
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-assets-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Create or update release for each pushed commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          python - <<'PY' > /tmp/pushed-commits.txt
+          import json
+          import os
+
+          with open(os.environ["GITHUB_EVENT_PATH"], encoding="utf-8") as event_file:
+              event = json.load(event_file)
+
+          for commit in event.get("commits", []):
+              commit_id = commit.get("id")
+              if commit_id:
+                  print(commit_id)
+          PY
+          if [ ! -s /tmp/pushed-commits.txt ]; then
+            printf '%s\n' "$GITHUB_SHA" > /tmp/pushed-commits.txt
+          fi
+
+          while IFS= read -r COMMIT_SHA; do
+            if [ -z "$COMMIT_SHA" ]; then
+              continue
+            fi
+
+            SHORT_SHA="${COMMIT_SHA:0:12}"
+            RELEASE_TAG="build-${COMMIT_SHA}"
+            RELEASE_TITLE="LinkedIn CLI build ${SHORT_SHA}"
+
+            mapfile -t ASSETS < <(find release-assets -type f -name "*-${SHORT_SHA}.*" | sort)
+            if [ "${#ASSETS[@]}" -eq 0 ]; then
+              echo "No release assets found for ${COMMIT_SHA}" >&2
+              exit 1
+            fi
+
+            NOTES_FILE="$(mktemp)"
+            cat > "$NOTES_FILE" <<EOF
+Automated release for commit \`${COMMIT_SHA}\`.
+
+Assets:
+- Linux x86_64 tar.gz
+- Windows x86_64 zip
+
+Notes:
+- Built with PyInstaller.
+- Browser commands require Playwright Chromium on the target machine.
+- Credentials, local profiles, .env files, and debug screenshots are not included.
+EOF
+
+            if gh release view "$RELEASE_TAG" --repo "$REPOSITORY" >/dev/null 2>&1; then
+              gh release edit "$RELEASE_TAG" \
+                --repo "$REPOSITORY" \
+                --target "$COMMIT_SHA" \
+                --title "$RELEASE_TITLE" \
+                --notes-file "$NOTES_FILE"
+              gh release upload "$RELEASE_TAG" \
+                "${ASSETS[@]}" \
+                --repo "$REPOSITORY" \
+                --clobber
+            else
+              gh release create "$RELEASE_TAG" \
+                "${ASSETS[@]}" \
+                --repo "$REPOSITORY" \
+                --target "$COMMIT_SHA" \
+                --title "$RELEASE_TITLE" \
+                --notes-file "$NOTES_FILE"
+            fi
+          done < /tmp/pushed-commits.txt
