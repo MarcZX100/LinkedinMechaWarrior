@@ -286,23 +286,31 @@ python scripts/build_binary.py --onedir --clean
 
 El repositorio incluye un workflow de GitHub Actions en `.github/workflows/release-on-push.yml`.
 
-Cada `push` a una rama compila todos los commits incluidos en ese push y crea un release por commit con tag:
+Cada `push` a una rama compila todos los commits incluidos en ese push y crea un release versionado por commit con tag:
 
 ```text
-build-<sha-del-commit>
+v<version-pyproject>-build.<github-run-number>.<commit-index>
 ```
 
-Cada release incluye dos assets:
+Ejemplo:
 
-- Linux x86_64: `linkedin-cli-linux-x86_64-<short-sha>.tar.gz`
-- Windows x86_64: `linkedin-cli-windows-x86_64-<short-sha>.zip`
+```text
+v0.1.0-build.12.1
+```
+
+Cada release incluye dos assets directos, sin `.zip` ni `.tar.gz` propios:
+
+- Linux x86_64: `linkedin-cli-linux`
+- Windows x86_64: `linkedin-cli.exe`
 
 El workflow:
 
 - ejecuta tests antes de empaquetar
 - compila con PyInstaller en `ubuntu-latest` y `windows-latest`
-- no incluye `.env`, `.browser-profile/`, contrasenas ni screenshots
+- sube solo los binarios compilados como assets del release
 - actualiza el release si se re-ejecuta para el mismo commit
+
+GitHub siempre anade automaticamente los assets `Source code (zip)` y `Source code (tar.gz)` a cualquier release. No forman parte del empaquetado de la aplicacion.
 
 Para que pueda crear releases, el workflow usa:
 

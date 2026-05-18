@@ -73,8 +73,18 @@ jobs:
             printf '%s\n' "$GITHUB_SHA" > /tmp/pushed-commits.txt
           fi
 
+          BASE_VERSION="$(python - <<'PY'
+          import tomllib
+
+          with open("pyproject.toml", "rb") as pyproject:
+              print(tomllib.load(pyproject)["project"]["version"])
+          PY
+          )"
+
           rm -rf release-assets
           mkdir -p release-assets
+
+          COMMIT_INDEX=0
 
           while IFS= read -r COMMIT_SHA; do
             COMMIT_SHA="${COMMIT_SHA//$'\r'/}"
@@ -82,51 +92,25 @@ jobs:
               continue
             fi
 
+            COMMIT_INDEX=$((COMMIT_INDEX + 1))
             SHORT_SHA="${COMMIT_SHA:0:12}"
-            PACKAGE_NAME="linkedin-cli-${PLATFORM}-${SHORT_SHA}"
+            VERSION="v${BASE_VERSION}-build.${GITHUB_RUN_NUMBER}.${COMMIT_INDEX}"
+            OUTPUT_DIR="release-assets/${VERSION}/${PLATFORM}"
 
-            echo "::group::Build ${PLATFORM} ${SHORT_SHA}"
+            echo "::group::Build ${PLATFORM} ${VERSION} ${SHORT_SHA}"
             git checkout --force "$COMMIT_SHA"
 
             python -m pip install -e ".[dev]"
             python -m pytest
             python scripts/build_binary.py --clean --name "$BINARY_NAME"
 
-            rm -rf release
-            mkdir -p "release/${PACKAGE_NAME}"
+            mkdir -p "$OUTPUT_DIR"
 
             if [ "$RUNNER_OS" = "Windows" ]; then
-              cp "dist/${BINARY_NAME}.exe" "release/${PACKAGE_NAME}/${EXECUTABLE_NAME}"
+              cp "dist/${BINARY_NAME}.exe" "${OUTPUT_DIR}/${EXECUTABLE_NAME}"
             else
-              cp "dist/${BINARY_NAME}" "release/${PACKAGE_NAME}/${EXECUTABLE_NAME}"
-              chmod +x "release/${PACKAGE_NAME}/${EXECUTABLE_NAME}"
-            fi
-
-            cp README.md "release/${PACKAGE_NAME}/"
-            cp LICENSE "release/${PACKAGE_NAME}/"
-            cp .env.example "release/${PACKAGE_NAME}/"
-
-            cat > "release/${PACKAGE_NAME}/INSTALL.txt" <<EOF
-          LinkedIn CLI automated build
-
-          Commit: ${COMMIT_SHA}
-          Repository: ${REPOSITORY}
-          Platform: ${PLATFORM}
-
-          Run:
-            ${EXECUTABLE_NAME} --help
-
-          Browser commands require Playwright Chromium to be available on this machine.
-          If you use a Python environment, install it with:
-            python -m playwright install chromium
-
-          This archive does not include credentials, .env, .browser-profile, or debug screenshots.
-          EOF
-
-            if [ "$RUNNER_OS" = "Windows" ]; then
-              powershell -NoProfile -Command "Compress-Archive -Path 'release/${PACKAGE_NAME}' -DestinationPath 'release-assets/${PACKAGE_NAME}.zip' -Force"
-            else
-              tar -czf "release-assets/${PACKAGE_NAME}.tar.gz" -C release "$PACKAGE_NAME"
+              cp "dist/${BINARY_NAME}" "${OUTPUT_DIR}/${EXECUTABLE_NAME}"
+              chmod +x "${OUTPUT_DIR}/${EXECUTABLE_NAME}"
             fi
 
             echo "::endgroup::"
@@ -136,7 +120,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: release-assets-${{ matrix.platform }}
-          path: release-assets/*
+          path: release-assets/**
           if-no-files-found: error
 
   release:
@@ -181,29 +165,49 @@ jobs:
             printf '%s\n' "$GITHUB_SHA" > /tmp/pushed-commits.txt
           fi
 
+          BASE_VERSION="$(python - <<'PY'
+          import tomllib
+
+          with open("pyproject.toml", "rb") as pyproject:
+              print(tomllib.load(pyproject)["project"]["version"])
+          PY
+          )"
+
+          COMMIT_INDEX=0
+
           while IFS= read -r COMMIT_SHA; do
             COMMIT_SHA="${COMMIT_SHA//$'\r'/}"
             if [ -z "$COMMIT_SHA" ]; then
               continue
             fi
 
+            COMMIT_INDEX=$((COMMIT_INDEX + 1))
             SHORT_SHA="${COMMIT_SHA:0:12}"
-            RELEASE_TAG="build-${COMMIT_SHA}"
-            RELEASE_TITLE="LinkedIn CLI build ${SHORT_SHA}"
+            VERSION="v${BASE_VERSION}-build.${GITHUB_RUN_NUMBER}.${COMMIT_INDEX}"
+            RELEASE_TAG="${VERSION}"
+            RELEASE_TITLE="LinkedIn CLI ${VERSION}"
 
-            mapfile -t ASSETS < <(find release-assets -type f -name "*-${SHORT_SHA}.*" | sort)
-            if [ "${#ASSETS[@]}" -eq 0 ]; then
-              echo "No release assets found for ${COMMIT_SHA}" >&2
+            LINUX_ASSET="release-assets/${VERSION}/linux-x86_64/linkedin-cli"
+            WINDOWS_ASSET="release-assets/${VERSION}/windows-x86_64/linkedin-cli.exe"
+
+            if [ ! -f "$LINUX_ASSET" ] || [ ! -f "$WINDOWS_ASSET" ]; then
+              echo "Missing release assets for ${VERSION} (${COMMIT_SHA})" >&2
+              find release-assets -type f | sort >&2
               exit 1
             fi
 
+            rm -rf upload-assets
+            mkdir -p upload-assets
+            cp "$LINUX_ASSET" upload-assets/linkedin-cli-linux
+            cp "$WINDOWS_ASSET" upload-assets/linkedin-cli.exe
+
             NOTES_FILE="$(mktemp)"
             cat > "$NOTES_FILE" <<EOF
-          Automated release for commit \`${COMMIT_SHA}\`.
+          Automated release \`${VERSION}\` for commit \`${COMMIT_SHA}\`.
 
           Assets:
-          - Linux x86_64 tar.gz
-          - Windows x86_64 zip
+          - \`linkedin-cli-linux\`
+          - \`linkedin-cli.exe\`
 
           Notes:
           - Built with PyInstaller.
@@ -218,12 +222,14 @@ jobs:
                 --title "$RELEASE_TITLE" \
                 --notes-file "$NOTES_FILE"
               gh release upload "$RELEASE_TAG" \
-                "${ASSETS[@]}" \
+                upload-assets/linkedin-cli-linux \
+                upload-assets/linkedin-cli.exe \
                 --repo "$REPOSITORY" \
                 --clobber
             else
               gh release create "$RELEASE_TAG" \
-                "${ASSETS[@]}" \
+                upload-assets/linkedin-cli-linux \
+                upload-assets/linkedin-cli.exe \
                 --repo "$REPOSITORY" \
                 --target "$COMMIT_SHA" \
                 --title "$RELEASE_TITLE" \
