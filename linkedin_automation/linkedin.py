@@ -36,6 +36,11 @@ class LinkedInClient:
         await self.page.goto(self.config.linkedin_url, wait_until="domcontentloaded")
         await self.page.wait_for_load_state("networkidle")
 
+    async def open_login(self) -> None:
+        logging.info("Opening LinkedIn login")
+        await self.page.goto("https://www.linkedin.com/login", wait_until="domcontentloaded")
+        await self.page.wait_for_load_state("networkidle")
+
     async def ensure_authenticated(self) -> None:
         if await self.is_authenticated():
             logging.info("LinkedIn session detected")
@@ -49,6 +54,46 @@ class LinkedInClient:
         await self.open_home()
         if not await self.is_authenticated():
             raise AuthenticationRequiredError("LinkedIn session was not detected after manual login.")
+
+    async def login_with_credentials(self, email: str, password: str) -> None:
+        if await self.is_authenticated():
+            logging.info("LinkedIn session already active")
+            return
+
+        await self.open_login()
+        try:
+            username = self.page.locator("input#username, input[name='session_key']").first
+            password_input = self.page.locator("input#password, input[name='session_password']").first
+            await username.wait_for(state="visible", timeout=self.config.default_timeout_ms)
+            await password_input.wait_for(state="visible", timeout=self.config.default_timeout_ms)
+            await username.fill(email)
+            await password_input.fill(password)
+            await self.page.locator("button[type='submit']").first.click()
+            await self.page.wait_for_load_state("domcontentloaded")
+            await self.page.wait_for_timeout(2000)
+        except PlaywrightTimeoutError as exc:
+            await save_diagnostic_screenshot(self.page, self.config.debug_dir, "login-form-not-found")
+            raise AuthenticationRequiredError(
+                "LinkedIn login form was not found. The UI may have changed."
+            ) from exc
+
+        if await self.is_authenticated():
+            logging.info("LinkedIn login succeeded")
+            return
+
+        if await self._needs_manual_login_step():
+            print("\nLinkedIn requires an extra verification step in the browser window.")
+            print("Complete 2FA, captcha, checkpoint, or any security prompt, then return here.")
+            input("Press Enter when you can see the LinkedIn feed...")
+            await self.open_home()
+            if await self.is_authenticated():
+                logging.info("LinkedIn login succeeded after manual verification")
+                return
+
+        await save_diagnostic_screenshot(self.page, self.config.debug_dir, "login-failed")
+        raise AuthenticationRequiredError(
+            "LinkedIn login was not completed. Check credentials, 2FA, or the diagnostic screenshot."
+        )
 
     async def is_authenticated(self) -> bool:
         url = self.page.url.lower()
@@ -85,6 +130,25 @@ class LinkedInClient:
             except PlaywrightError:
                 continue
         return "linkedin.com/feed" in url
+
+    async def _needs_manual_login_step(self) -> bool:
+        url = self.page.url.lower()
+        if any(marker in url for marker in ["checkpoint", "challenge", "uas/login-submit"]):
+            return True
+
+        selectors = [
+            "input[name='pin']",
+            "input[autocomplete='one-time-code']",
+            "iframe[src*='captcha']",
+            "text=/verification|verificacion|security|seguridad/i",
+        ]
+        for selector in selectors:
+            try:
+                if await self.page.locator(selector).first.count() > 0:
+                    return True
+            except PlaywrightError:
+                continue
+        return False
 
     async def prepare_post(self, text: str) -> None:
         post_text = normalize_text(text)

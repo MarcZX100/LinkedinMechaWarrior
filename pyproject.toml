@@ -18,6 +18,9 @@ dev = [
     "pytest>=8.2.0",
 ]
 
+[project.scripts]
+linkedin-cli = "linkedin_automation.cli:main"
+
 [tool.setuptools.packages.find]
 include = ["linkedin_automation*"]
 

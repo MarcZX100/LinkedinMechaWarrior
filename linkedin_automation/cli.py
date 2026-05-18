@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import getpass
 import logging
 from pathlib import Path
 
@@ -29,6 +30,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     open_cmd = subparsers.add_parser("open", help="Open LinkedIn with the persistent browser profile.")
     open_cmd.add_argument("--keep-open", action="store_true", help="Wait for Enter before closing the browser.")
+
+    status = subparsers.add_parser("status", help="Check whether the persistent LinkedIn session is active.")
+    status.add_argument("--keep-open", action="store_true", help="Wait for Enter before closing the browser.")
+
+    auth = subparsers.add_parser("auth", help="Log in to LinkedIn using terminal prompts and the persistent browser.")
+    auth.add_argument("--email", help="LinkedIn email. If omitted, it is prompted in the terminal.")
+    auth.add_argument("--manual", action="store_true", help="Skip credential prompts and log in manually in the browser.")
+    auth.add_argument("--keep-open", action="store_true", help="Wait for Enter before closing the browser.")
+
+    login = subparsers.add_parser("login", help="Alias for auth.")
+    login.add_argument("--email", help="LinkedIn email. If omitted, it is prompted in the terminal.")
+    login.add_argument("--manual", action="store_true", help="Skip credential prompts and log in manually in the browser.")
+    login.add_argument("--keep-open", action="store_true", help="Wait for Enter before closing the browser.")
 
     prepare = subparsers.add_parser("prepare-post", help="Open LinkedIn and place text in the post editor.")
     prepare_text = prepare.add_mutually_exclusive_group(required=True)
@@ -60,6 +74,10 @@ def main(argv: list[str] | None = None) -> int:
         config = load_config()
         if args.command == "open":
             return asyncio.run(_cmd_open(args, config))
+        if args.command == "status":
+            return asyncio.run(_cmd_status(args, config))
+        if args.command in {"auth", "login"}:
+            return asyncio.run(_cmd_auth(args, config))
         if args.command == "prepare-post":
             return asyncio.run(_cmd_prepare_post(args, config))
         if args.command == "publish":
@@ -97,6 +115,45 @@ async def _cmd_open(args: argparse.Namespace, config) -> int:
         await client.open_home()
         await client.ensure_authenticated()
         logging.info("LinkedIn is open with the persistent profile")
+        if args.keep_open:
+            input("Press Enter to close the browser...")
+    return 0
+
+
+async def _cmd_status(args: argparse.Namespace, config) -> int:
+    async with BrowserSession(config) as browser:
+        page = await browser.new_page()
+        client = LinkedInClient(page, config)
+        await client.open_home()
+        authenticated = await client.is_authenticated()
+        if authenticated:
+            print("LinkedIn session: authenticated")
+            logging.info("LinkedIn session detected")
+        else:
+            print("LinkedIn session: not authenticated")
+            logging.info("LinkedIn session not detected")
+        if args.keep_open:
+            input("Press Enter to close the browser...")
+    return 0 if authenticated else 1
+
+
+async def _cmd_auth(args: argparse.Namespace, config) -> int:
+    async with BrowserSession(config) as browser:
+        page = await browser.new_page()
+        client = LinkedInClient(page, config)
+        await client.open_home()
+        if await client.is_authenticated():
+            logging.info("LinkedIn authentication already verified")
+        elif args.manual:
+            await client.ensure_authenticated()
+        else:
+            email = args.email or input("LinkedIn email: ").strip()
+            password = getpass.getpass("LinkedIn password (not stored): ")
+            if not email or not password:
+                raise ValueError("Email and password are required for CLI login. Use --manual for browser-only login.")
+            await client.login_with_credentials(email, password)
+        print("\nLinkedIn session is ready in the persistent browser profile.")
+        logging.info("LinkedIn authentication verified")
         if args.keep_open:
             input("Press Enter to close the browser...")
     return 0

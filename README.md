@@ -1,6 +1,6 @@
 # LinkedinMechaWarrior
 
-Herramienta local para ayudar a redactar y preparar posts en LinkedIn usando un navegador Chromium real con perfil persistente.
+CLI local para ayudar a redactar y preparar posts en LinkedIn usando un navegador Chromium real con perfil persistente.
 
 El objetivo es asistencia personal con revision humana. La herramienta no scrapea LinkedIn, no interactua con otras cuentas, no agenda publicaciones y no publica por defecto. LinkedIn puede cambiar su interfaz o limitar automatizaciones; usala con prudencia y revisa sus terminos antes de depender de ella en un flujo profesional.
 
@@ -8,7 +8,9 @@ El objetivo es asistencia personal con revision humana. La herramienta no scrape
 
 - Genera un borrador de post desde una idea o texto base.
 - Abre LinkedIn en Chromium con una sesion persistente guardada en `.browser-profile/`.
-- Te pide iniciar sesion manualmente si no detecta una sesion activa.
+- Permite iniciar sesion desde la terminal con `auth` o `login`. La contrasena se pide con prompt seguro y no se guarda.
+- Mantiene fallback manual para 2FA, captcha, checkpoints o cambios de UI.
+- Permite consultar estado de sesion con `status`.
 - Abre el compositor de LinkedIn y pega el texto para revision manual.
 - Bloquea la publicacion automatica salvo que se cumplan tres condiciones:
   - `ALLOW_AUTO_PUBLISH=true`
@@ -18,7 +20,7 @@ El objetivo es asistencia personal con revision humana. La herramienta no scrape
 ## Limitaciones
 
 - LinkedIn cambia selectores y textos de interfaz con frecuencia. Si el compositor no aparece, la herramienta guarda screenshots en `debug/`.
-- El login siempre es manual. No se guardan ni se piden credenciales.
+- El login desde CLI rellena el formulario en el navegador, pero no guarda credenciales. LinkedIn puede requerir pasos manuales.
 - El generador de posts es local y determinista; no llama a modelos externos.
 - El modo `publish` existe solo como opcion protegida. La ruta recomendada es preparar el post y publicarlo manualmente tras revisarlo.
 
@@ -34,6 +36,7 @@ Requisitos:
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+pip install -e .
 python -m playwright install chromium
 cp .env.example .env
 ```
@@ -52,14 +55,14 @@ MAX_POST_CHARS=3000
 ALLOW_AUTO_PUBLISH=false
 ```
 
-No pongas credenciales en `.env`. La sesion se gestiona desde el navegador persistente.
+No pongas credenciales en `.env`. La contrasena se pide en terminal cuando ejecutas `auth` o `login`, y la sesion se conserva en el perfil persistente del navegador.
 
 ## Uso
 
 Generar un borrador:
 
 ```bash
-python -m linkedin_automation.cli draft \
+linkedin-cli draft \
   --idea "Lo que aprendi automatizando procesos internos con IA" \
   --tone profesional \
   --length media
@@ -68,7 +71,7 @@ python -m linkedin_automation.cli draft \
 Guardar el borrador en un archivo:
 
 ```bash
-python -m linkedin_automation.cli draft \
+linkedin-cli draft \
   --idea "Lo que aprendi automatizando procesos internos con IA" \
   --tone profesional \
   --length media \
@@ -78,27 +81,63 @@ python -m linkedin_automation.cli draft \
 Vista previa sin abrir LinkedIn:
 
 ```bash
-python -m linkedin_automation.cli preview --text-file post.txt
+linkedin-cli preview --text-file post.txt
 ```
 
 Abrir LinkedIn con perfil persistente:
 
 ```bash
-python -m linkedin_automation.cli open --keep-open
+linkedin-cli open --keep-open
+```
+
+Verificar si hay sesion activa:
+
+```bash
+linkedin-cli status
+```
+
+Iniciar sesion desde la terminal:
+
+```bash
+linkedin-cli auth --email tu-email@example.com --keep-open
+```
+
+El comando pedira la contrasena con un prompt seguro:
+
+```text
+LinkedIn password (not stored):
+```
+
+Tambien puedes usar el alias `login`:
+
+```bash
+linkedin-cli login --email tu-email@example.com
+```
+
+Si prefieres escribir todo directamente en el navegador o LinkedIn muestra 2FA, captcha o un checkpoint:
+
+```bash
+linkedin-cli auth --manual --keep-open
 ```
 
 Preparar un post en el editor de LinkedIn:
 
 ```bash
-python -m linkedin_automation.cli prepare-post --text-file post.txt
+linkedin-cli prepare-post --text-file post.txt
 ```
 
 Publicacion automatica protegida:
 
 ```bash
-ALLOW_AUTO_PUBLISH=true python -m linkedin_automation.cli prepare-post \
+ALLOW_AUTO_PUBLISH=true linkedin-cli prepare-post \
   --text-file post.txt \
   --publish
+```
+
+Tambien puedes ejecutar el modulo directamente si no instalas el comando:
+
+```bash
+python -m linkedin_automation.cli status
 ```
 
 Aunque el flag este presente, la herramienta pedira escribir `PUBLICAR`. Si falta la variable, el flag o la confirmacion exacta, no publica.
@@ -131,6 +170,7 @@ linkedin_automation/
   post_generator.py
   utils.py
 tests/
+  test_cli.py
   test_config.py
   test_post_generator.py
 .env.example
