@@ -44,6 +44,12 @@ python -m playwright install chromium
 cp .env.example .env
 ```
 
+Si quieres generar un ejecutable compilado, instala tambien las dependencias de build:
+
+```bash
+pip install -e ".[build]"
+```
+
 ## Configuracion
 
 Edita `.env` si quieres cambiar rutas o limites:
@@ -190,12 +196,16 @@ Longitudes disponibles:
 ```text
 linkedin_automation/
   __init__.py
+  __main__.py
   browser.py
   cli.py
   config.py
   linkedin.py
   post_generator.py
   utils.py
+scripts/
+  build_binary.py
+  linkedin_cli_entry.py
 tests/
   test_cli.py
   test_config.py
@@ -224,3 +234,45 @@ pytest
 ```
 
 Los tests cubren la generacion local de posts y la validacion de configuracion. No abren LinkedIn.
+
+## Compilar
+
+Puedes crear un ejecutable local con PyInstaller:
+
+```bash
+source .venv/bin/activate
+pip install -e ".[build]"
+python scripts/build_binary.py --clean
+```
+
+El binario queda en:
+
+```bash
+dist/linkedin-cli
+```
+
+Uso del binario:
+
+```bash
+./dist/linkedin-cli --help
+./dist/linkedin-cli draft --idea "Lo que aprendi automatizando procesos internos con IA"
+```
+
+Notas importantes:
+
+- El ejecutable no incluye `.env`, `.browser-profile/`, `debug/`, contrasenas ni sesiones.
+- Chromium de Playwright no se empaqueta dentro del binario. Debe estar instalado en la maquina donde ejecutes comandos de navegador.
+- En la maquina de build o destino, instala Chromium con:
+
+```bash
+python -m playwright install chromium
+```
+
+- Si distribuyes solo el binario a otra maquina sin Python, tendras que provisionar tambien los navegadores de Playwright o usar una instalacion local de Python para ejecutar `playwright install chromium`.
+- `--save-password` sigue usando el llavero seguro del sistema de la maquina donde se ejecuta el binario.
+
+Tambien puedes construir en modo carpeta, mas facil de inspeccionar y depurar:
+
+```bash
+python scripts/build_binary.py --onedir --clean
+```
