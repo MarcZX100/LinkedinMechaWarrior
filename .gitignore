@@ -1,12 +1,9 @@
+# Build output
+/dist/
+/lmw
+/lmw.exe
+
+# Local data that must never be committed
 .env
-.venv/
-__pycache__/
-*.pyc
-.pytest_cache/
-*.egg-info/
-build/
-dist/
-*.spec
-.browser-profile/
-debug/
+*.har
 post.txt

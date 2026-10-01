@@ -1,2 +1,0 @@
-keyring>=25.0.0
-playwright>=1.44.0
