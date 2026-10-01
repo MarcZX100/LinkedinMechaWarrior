@@ -126,4 +126,10 @@ func TestAutoStoreFallsBackToFile(t *testing.T) {
 	if loaded, err := store.Load(); err != nil || loaded.Cookies["li_at"] != "AQEDtoken" {
 		t.Fatalf("unexpected session %+v %v", loaded, err)
 	}
+	if err := store.Delete(); err != nil {
+		t.Fatalf("deleting without a keyring failed: %v", err)
+	}
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Error("session file was not deleted")
+	}
 }

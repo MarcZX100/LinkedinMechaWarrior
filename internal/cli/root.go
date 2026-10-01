@@ -123,7 +123,17 @@ func (a *app) rootCommand() *cobra.Command {
 			if a.verbose {
 				level = slog.LevelDebug
 			}
-			slog.SetDefault(slog.New(slog.NewTextHandler(a.stderr, &slog.HandlerOptions{Level: level})))
+			options := &slog.HandlerOptions{Level: level}
+			if !a.verbose {
+				// Timestamps only help when debugging.
+				options.ReplaceAttr = func(groups []string, attr slog.Attr) slog.Attr {
+					if len(groups) == 0 && attr.Key == slog.TimeKey {
+						return slog.Attr{}
+					}
+					return attr
+				}
+			}
+			slog.SetDefault(slog.New(slog.NewTextHandler(a.stderr, options)))
 			cfg, err := a.loadConfig()
 			if err != nil {
 				return errs.Wrap(errs.Usage, err, "%v", err)

@@ -226,7 +226,16 @@ func (a AutoStore) Save(s *Session) (string, error) {
 }
 
 func (a AutoStore) Delete() error {
-	return errors.Join(a.Keyring.Delete(), a.File.Delete())
+	fileErr := a.File.Delete()
+	if err := a.Keyring.Delete(); err != nil {
+		// Without a usable keyring there is nothing stored there to delete.
+		// Only report the failure if the session can still be read back.
+		if _, loadErr := a.Keyring.Load(); loadErr == nil {
+			return errors.Join(err, fileErr)
+		}
+		slog.Debug("system keyring unavailable while deleting the session", "error", err)
+	}
+	return fileErr
 }
 
 func decode(raw []byte, where string) (*Session, error) {
