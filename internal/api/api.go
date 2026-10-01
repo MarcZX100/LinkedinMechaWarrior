@@ -174,6 +174,10 @@ func parseUpdate(doc *normalized.Doc, update normalized.Object) (FeedPost, bool)
 	age := normalized.Text(normalized.Dig(actor, "subDescription"))
 	post.Promoted = strings.Contains(strings.ToLower(age+" "+post.AuthorHeadline), "promoted")
 	post.Age = strings.TrimSpace(strings.Split(age, "•")[0])
+	if strings.EqualFold(post.Age, "promoted") {
+		// Sponsored posts show "Promoted" where the age would be.
+		post.Age = ""
+	}
 
 	counts := doc.Ref(doc.Ref(update, "socialDetail"), "totalSocialActivityCounts")
 	post.Reactions = intPtr(counts["numLikes"])

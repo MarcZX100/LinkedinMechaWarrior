@@ -42,7 +42,7 @@ func Wrap(text string, width int, indent string) []string {
 	for _, paragraph := range strings.Split(text, "\n") {
 		words := strings.Fields(paragraph)
 		if len(words) == 0 {
-			lines = append(lines, indent)
+			lines = append(lines, "")
 			continue
 		}
 		line := words[0]

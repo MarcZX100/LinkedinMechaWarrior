@@ -10,7 +10,7 @@ import (
 
 func TestWrapKeepsParagraphsAndWidth(t *testing.T) {
 	lines := Wrap("one two three four five\n\nsix", 12, "  ")
-	want := []string{"  one two", "  three four", "  five", "  ", "  six"}
+	want := []string{"  one two", "  three four", "  five", "", "  six"}
 	if strings.Join(lines, "|") != strings.Join(want, "|") {
 		t.Errorf("Wrap = %q", lines)
 	}

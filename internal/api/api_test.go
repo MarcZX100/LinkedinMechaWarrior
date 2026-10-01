@@ -128,8 +128,8 @@ func TestParseFeedHandlesResharesAndPromotedPosts(t *testing.T) {
 	if posts[0].ResharedAuthor != "Alan Turing" || posts[0].Text != "Original thoughts" {
 		t.Errorf("unexpected repost %+v", posts[0])
 	}
-	if !posts[1].Promoted {
-		t.Error("promoted post not flagged")
+	if !posts[1].Promoted || posts[1].Age != "" {
+		t.Errorf("promoted post not flagged, or label kept as its age: %+v", posts[1])
 	}
 }
 
