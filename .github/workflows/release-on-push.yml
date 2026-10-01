@@ -37,15 +37,16 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # Only needed for commits from before the Go rewrite.
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: pip
-
-      - name: Upgrade packaging tools
-        shell: bash
-        run: python -m pip install --upgrade pip
 
       - name: Build pushed commits
         shell: bash
@@ -53,12 +54,10 @@ jobs:
           BINARY_NAME: ${{ matrix.binary_name }}
           EXECUTABLE_NAME: ${{ matrix.executable_name }}
           PLATFORM: ${{ matrix.platform }}
-          REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
-          export PLAYWRIGHT_BROWSERS_PATH=0
 
-          python - <<'PY' > /tmp/pushed-commits.txt
+          python - <<'PY' > "$RUNNER_TEMP/pushed-commits.txt"
           import json
           import os
 
@@ -70,17 +69,14 @@ jobs:
               if commit_id:
                   print(commit_id)
           PY
-          if [ ! -s /tmp/pushed-commits.txt ]; then
-            printf '%s\n' "$GITHUB_SHA" > /tmp/pushed-commits.txt
+          if [ ! -s "$RUNNER_TEMP/pushed-commits.txt" ]; then
+            printf '%s\n' "$GITHUB_SHA" > "$RUNNER_TEMP/pushed-commits.txt"
           fi
 
-          BASE_VERSION="$(python - <<'PY'
-          import tomllib
-
-          with open("pyproject.toml", "rb") as pyproject:
-              print(tomllib.load(pyproject)["project"]["version"])
-          PY
-          )"
+          SUFFIX=""
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            SUFFIX=".exe"
+          fi
 
           rm -rf release-assets
           mkdir -p release-assets
@@ -94,33 +90,45 @@ jobs:
             fi
 
             COMMIT_INDEX=$((COMMIT_INDEX + 1))
-            SHORT_SHA="${COMMIT_SHA:0:12}"
-            VERSION="v${BASE_VERSION}-build.${GITHUB_RUN_NUMBER}.${COMMIT_INDEX}"
-            OUTPUT_DIR="release-assets/${VERSION}/${PLATFORM}"
-
-            echo "::group::Build ${PLATFORM} ${VERSION} ${SHORT_SHA}"
+            OUTPUT_DIR="release-assets/${COMMIT_INDEX}"
+            echo "::group::Build ${PLATFORM} commit ${COMMIT_INDEX} (${COMMIT_SHA:0:12})"
             git checkout --force "$COMMIT_SHA"
+            rm -rf dist build
 
-            python -m pip install -e ".[dev]"
-            if [ "$RUNNER_OS" = "Linux" ]; then
-              python -m playwright install --with-deps chromium
+            if [ -f pyproject.toml ]; then
+              # Python implementation (commits before the Go rewrite).
+              KIND=python
+              BASE_VERSION="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
+              export PLAYWRIGHT_BROWSERS_PATH=0
+              python -m pip install --upgrade pip
+              python -m pip install -e ".[dev]"
+              if [ "$RUNNER_OS" = "Linux" ]; then
+                python -m playwright install --with-deps chromium
+              else
+                python -m playwright install chromium
+              fi
+              python -m pytest
+              python scripts/build_binary.py --clean --skip-browser-install --name "$BINARY_NAME"
             else
-              python -m playwright install chromium
-            fi
-            python -m pytest
-            python scripts/build_binary.py --clean --skip-browser-install --name "$BINARY_NAME"
-
-            mkdir -p "$OUTPUT_DIR"
-
-            if [ "$RUNNER_OS" = "Windows" ]; then
-              cp "dist/${BINARY_NAME}.exe" "${OUTPUT_DIR}/${EXECUTABLE_NAME}"
-            else
-              cp "dist/${BINARY_NAME}" "${OUTPUT_DIR}/${EXECUTABLE_NAME}"
-              chmod +x "${OUTPUT_DIR}/${EXECUTABLE_NAME}"
+              KIND=go
+              BASE_VERSION="$(sed -n 's/^const Version = "\(.*\)"$/\1/p' internal/version/version.go)"
+              go vet ./...
+              go test ./...
+              CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o "dist/${BINARY_NAME}${SUFFIX}" ./cmd/lmw
             fi
 
+            if [ -z "$BASE_VERSION" ]; then
+              echo "Could not read the version of commit ${COMMIT_SHA}" >&2
+              exit 1
+            fi
+
+            mkdir -p "${OUTPUT_DIR}/${PLATFORM}"
+            cp "dist/${BINARY_NAME}${SUFFIX}" "${OUTPUT_DIR}/${PLATFORM}/${EXECUTABLE_NAME}"
+            chmod +x "${OUTPUT_DIR}/${PLATFORM}/${EXECUTABLE_NAME}"
+            printf '%s\n' "$BASE_VERSION" > "${OUTPUT_DIR}/version.txt"
+            printf '%s\n' "$KIND" > "${OUTPUT_DIR}/kind.txt"
             echo "::endgroup::"
-          done < /tmp/pushed-commits.txt
+          done < "$RUNNER_TEMP/pushed-commits.txt"
 
       - name: Upload build assets
         uses: actions/upload-artifact@v4
@@ -138,11 +146,6 @@ jobs:
       contents: write
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
       - name: Download build assets
         uses: actions/download-artifact@v4
         with:
@@ -167,7 +170,7 @@ jobs:
             PRERELEASE=true
           fi
 
-          python - <<'PY' > /tmp/pushed-commits.txt
+          python - <<'PY' > "$RUNNER_TEMP/pushed-commits.txt"
           import json
           import os
 
@@ -179,17 +182,9 @@ jobs:
               if commit_id:
                   print(commit_id)
           PY
-          if [ ! -s /tmp/pushed-commits.txt ]; then
-            printf '%s\n' "$GITHUB_SHA" > /tmp/pushed-commits.txt
+          if [ ! -s "$RUNNER_TEMP/pushed-commits.txt" ]; then
+            printf '%s\n' "$GITHUB_SHA" > "$RUNNER_TEMP/pushed-commits.txt"
           fi
-
-          BASE_VERSION="$(python - <<'PY'
-          import tomllib
-
-          with open("pyproject.toml", "rb") as pyproject:
-              print(tomllib.load(pyproject)["project"]["version"])
-          PY
-          )"
 
           COMMIT_INDEX=0
 
@@ -200,24 +195,31 @@ jobs:
             fi
 
             COMMIT_INDEX=$((COMMIT_INDEX + 1))
-            SHORT_SHA="${COMMIT_SHA:0:12}"
-            VERSION="v${BASE_VERSION}-build.${GITHUB_RUN_NUMBER}.${COMMIT_INDEX}"
-            RELEASE_TAG="${VERSION}"
-            RELEASE_TITLE="LinkedinMechaWarrior ${VERSION}"
+            ASSET_DIR="release-assets/${COMMIT_INDEX}"
+            LINUX_ASSET="${ASSET_DIR}/linux-x86_64/lmw"
+            WINDOWS_ASSET="${ASSET_DIR}/windows-x86_64/lmw.exe"
 
-            LINUX_ASSET="release-assets/${VERSION}/linux-x86_64/lmw"
-            WINDOWS_ASSET="release-assets/${VERSION}/windows-x86_64/lmw.exe"
-
-            if [ ! -f "$LINUX_ASSET" ] || [ ! -f "$WINDOWS_ASSET" ]; then
-              echo "Missing release assets for ${VERSION} (${COMMIT_SHA})" >&2
+            if [ ! -f "$LINUX_ASSET" ] || [ ! -f "$WINDOWS_ASSET" ] || [ ! -f "${ASSET_DIR}/version.txt" ]; then
+              echo "Missing release assets for commit ${COMMIT_INDEX} (${COMMIT_SHA})" >&2
               find release-assets -type f | sort >&2
               exit 1
             fi
+
+            VERSION="v$(cat "${ASSET_DIR}/version.txt")-build.${GITHUB_RUN_NUMBER}.${COMMIT_INDEX}"
+            KIND="$(cat "${ASSET_DIR}/kind.txt")"
+            RELEASE_TAG="${VERSION}"
+            RELEASE_TITLE="LinkedinMechaWarrior ${VERSION}"
 
             rm -rf upload-assets
             mkdir -p upload-assets
             cp "$LINUX_ASSET" upload-assets/lmw-linux
             cp "$WINDOWS_ASSET" upload-assets/lmw.exe
+
+            if [ "$KIND" = "go" ]; then
+              BUILD_NOTE="Static Go binary: no browser, Python or other runtime needed."
+            else
+              BUILD_NOTE="Built with PyInstaller; Playwright Chromium is bundled into the executable."
+            fi
 
             NOTES_FILE="$(mktemp)"
             cat > "$NOTES_FILE" <<EOF
@@ -228,9 +230,8 @@ jobs:
           - \`lmw.exe\`
 
           Notes:
-          - Built with PyInstaller.
-          - Playwright Chromium is bundled into the executable.
-          - Credentials, local profiles, and debug screenshots are not included.
+          - ${BUILD_NOTE}
+          - Sessions, credentials and other local data are not included.
           EOF
 
             if gh release view "$RELEASE_TAG" --repo "$REPOSITORY" >/dev/null 2>&1; then
@@ -259,4 +260,4 @@ jobs:
                 --notes-file "$NOTES_FILE" \
                 "${PRERELEASE_FLAG[@]}"
             fi
-          done < /tmp/pushed-commits.txt
+          done < "$RUNNER_TEMP/pushed-commits.txt"
