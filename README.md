@@ -13,7 +13,7 @@ lmw feed --json                      # ...or as JSON for other tools
 lmw post publish --text-file post.txt  # publish, after you confirm
 ```
 
-**[Read the documentation →](docs/README.md)**
+**[Read the documentation →](https://marczx100.github.io/LinkedinMechaWarrior/)** ([also in the repo](docs/README.md))
 · [Getting started](docs/getting-started.md) (10 minutes)
 · [Command reference](docs/reference/lmw.md)
 · [Troubleshooting](docs/troubleshooting.md)
@@ -69,6 +69,14 @@ profiles, invitations.
 go test ./...                                        # tests never contact LinkedIn
 go build -o lmw ./cmd/lmw
 go test ./internal/cli -run TestReference -update    # regenerate docs/reference
+```
+
+The documentation website is built from `docs/` with Material for MkDocs and
+published to GitHub Pages by `.github/workflows/docs.yml`. To preview it:
+
+```bash
+pip install -r .github/docs-requirements.txt
+mkdocs serve        # http://127.0.0.1:8000
 ```
 
 See [How it works](docs/how-it-works.md) and [Extend lmw](docs/guides/extend-lmw.md).

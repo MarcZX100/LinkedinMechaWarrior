@@ -1,0 +1,122 @@
+# Documentation website, published to GitHub Pages by .github/workflows/docs.yml.
+# Preview locally:
+#   pip install -r .github/docs-requirements.txt
+#   mkdocs serve
+site_name: lmw · LinkedinMechaWarrior
+site_description: A command-line client for your own LinkedIn account.
+site_url: https://marczx100.github.io/LinkedinMechaWarrior/
+repo_url: https://github.com/MarcZX100/LinkedinMechaWarrior
+repo_name: MarcZX100/LinkedinMechaWarrior
+edit_uri: edit/main/docs/
+docs_dir: docs
+strict: true
+
+theme:
+  name: material
+  icon:
+    logo: material/robot-excited
+    repo: fontawesome/brands/github
+  favicon: assets/favicon.svg
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep purple
+      accent: amber
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep purple
+      accent: amber
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.instant.progress
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - navigation.indexes
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.action.edit
+
+markdown_extensions:
+  # GitHub-style "> [!NOTE]" alerts, so the same files read well on GitHub.
+  - github-callouts
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+validation:
+  links:
+    not_found: warn
+    anchors: warn
+    absolute_links: warn
+    unrecognized_links: warn
+
+nav:
+  - Home: README.md
+  - Getting started:
+      - getting-started.md
+      - Glossary: glossary.md
+  - Guides:
+      - Connect your account: guides/import-session.md
+      - Read LinkedIn: guides/read-linkedin.md
+      - Write and publish posts: guides/write-posts.md
+      - Stay safe: guides/stay-safe.md
+      - Browser identity: guides/browser-identity.md
+      - Extend lmw: guides/extend-lmw.md
+  - Reference:
+      - Configuration: configuration.md
+      - Troubleshooting: troubleshooting.md
+      - FAQ: faq.md
+      - How it works: how-it-works.md
+      - Commands:
+          - reference/lmw.md
+          - reference/lmw_auth.md
+          - reference/lmw_auth_import.md
+          - reference/lmw_auth_status.md
+          - reference/lmw_auth_logout.md
+          - reference/lmw_me.md
+          - reference/lmw_feed.md
+          - reference/lmw_post.md
+          - reference/lmw_post_draft.md
+          - reference/lmw_post_preview.md
+          - reference/lmw_post_publish.md
+          - reference/lmw_api.md
+          - reference/lmw_api_get.md
+          - reference/lmw_har.md
+          - reference/lmw_har_inspect.md
+          - reference/lmw_identity.md
+          - reference/lmw_identity_show.md
+          - reference/lmw_identity_import.md
+          - reference/lmw_identity_reset.md
+          - reference/lmw_limits.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/MarcZX100/LinkedinMechaWarrior

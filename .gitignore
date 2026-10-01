@@ -7,3 +7,6 @@
 .env
 *.har
 post.txt
+
+# Documentation website build output
+/site/

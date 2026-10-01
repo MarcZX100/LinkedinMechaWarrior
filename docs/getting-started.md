@@ -27,7 +27,7 @@ Go to the project's **Releases** page on GitHub and download one file:
 
 That single file is the whole program. There is nothing else to install.
 
-<details>
+<details markdown="1">
 <summary><b>Linux: make it executable and put it on your PATH</b></summary>
 
 ```bash
@@ -40,7 +40,7 @@ Open a new terminal so that `~/.local/bin` is on your `PATH`.
 
 </details>
 
-<details>
+<details markdown="1">
 <summary><b>Windows: put it somewhere and open a terminal there</b></summary>
 
 1. Create a folder, for example `C:\Tools`, and move `lmw.exe` into it.
@@ -55,7 +55,7 @@ Windows SmartScreen may warn about an unknown publisher the first time: choose
 
 </details>
 
-<details>
+<details markdown="1">
 <summary><b>macOS, or building it yourself</b></summary>
 
 With [Go](https://go.dev/dl/) installed:

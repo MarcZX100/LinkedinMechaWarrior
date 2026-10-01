@@ -44,6 +44,38 @@ func generateReference(t *testing.T, dir string) {
 	if err := doc.GenMarkdownTreeCustom(docsRoot(), dir, prepend, link); err != nil {
 		t.Fatal(err)
 	}
+	// Cobra titles each page with "## lmw ..."; make it the page's H1 so
+	// the documentation website names the pages after their command.
+	pages, _ := filepath.Glob(filepath.Join(dir, "*.md"))
+	for _, page := range pages {
+		raw, err := os.ReadFile(page)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fixed := strings.Replace(string(raw), "\n## lmw", "\n# lmw", 1)
+		if err := os.WriteFile(page, []byte(fixed), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// TestWebsiteNavListsEveryPage keeps mkdocs.yml in step with docs/: a page
+// missing from the navigation would be unreachable from the website menus.
+func TestWebsiteNavListsEveryPage(t *testing.T) {
+	config, err := os.ReadFile("../../mkdocs.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = filepath.WalkDir(docsDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".md") {
+			return err
+		}
+		rel, _ := filepath.Rel(docsDir, path)
+		if !strings.Contains(string(config), " "+filepath.ToSlash(rel)+"\n") {
+			t.Errorf("docs/%s is missing from the nav in mkdocs.yml", filepath.ToSlash(rel))
+		}
+		return nil
+	})
 }
 
 // TestReferenceIsUpToDate keeps docs/reference in sync with the commands.
