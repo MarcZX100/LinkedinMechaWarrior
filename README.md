@@ -1,353 +1,222 @@
 # LinkedinMechaWarrior
 
-CLI local para ayudar a redactar y preparar posts en LinkedIn usando un navegador Chromium real con perfil persistente.
+A command-line client for LinkedIn, for your own account.
 
-El objetivo es asistencia personal con revision humana. La herramienta no scrapea LinkedIn, no interactua con otras cuentas, no agenda publicaciones y no publica por defecto. LinkedIn puede cambiar su interfaz o limitar automatizaciones; usala con prudencia y revisa sus terminos antes de depender de ella en un flujo profesional.
+It talks to LinkedIn's internal web API ("Voyager") from inside a real Chromium
+browser that keeps your session in a persistent profile. Reading your feed or
+your profile takes one command, and everything can be printed as JSON to pipe
+into other tools.
 
-## Que hace
+> **Warning:** using LinkedIn's internal API goes against LinkedIn's User
+> Agreement and can get your account restricted. This tool is built to keep
+> usage light and human-paced (see [Staying under the radar](#staying-under-the-radar)),
+> but the risk is never zero. Use it on your own account, at your own risk.
 
-- Genera un borrador de post desde una idea o texto base.
-- Abre LinkedIn en Chromium desde el propio binario compilado.
-- Guarda la sesion persistente en una carpeta de datos de usuario del sistema.
-- Permite iniciar sesion desde la terminal con `auth` o `login`. La contrasena se pide con prompt seguro.
-- Puede guardar la contrasena en el llavero seguro del sistema usando `keyring`, solo si lo pides con `--save-password`.
-- Mantiene fallback manual para 2FA, captcha, checkpoints o cambios de UI.
-- Permite consultar estado de sesion con `status`.
-- Abre el compositor de LinkedIn y pega el texto para revision manual.
-- Bloquea la publicacion automatica salvo que se cumplan tres condiciones:
-  - `ALLOW_AUTO_PUBLISH=true`
-  - flag explicito `--publish`
-  - confirmacion interactiva exacta: `PUBLICAR`
+## Status
 
-## Limitaciones
+Early (0.2). Working today:
 
-- LinkedIn cambia selectores y textos de interfaz con frecuencia. Si el compositor no aparece, la herramienta guarda screenshots en `debug/`.
-- El login desde CLI rellena el formulario en el navegador. LinkedIn puede requerir pasos manuales.
-- La contrasena solo se guarda si usas `--save-password`, y se guarda mediante el llavero del sistema, no en archivos del proyecto.
-- El generador de posts es local y determinista; no llama a modelos externos.
-- El modo `publish` existe solo como opcion protegida. La ruta recomendada es preparar el post y publicarlo manualmente tras revisarlo.
+| Command | What it does |
+|---|---|
+| `auth login / status / logout / forget-password` | Session management |
+| `open` | Open LinkedIn in the browser (e.g. to clear a security check) |
+| `me` | Your profile |
+| `feed` | Your home feed |
+| `post draft / preview / compose` | Outline, check and publish posts |
+| `api get` | Raw access to any internal API path |
+| `capture` | Record the API calls the LinkedIn web app makes, to discover endpoints |
+| `limits` | Request budgets and cooldowns |
 
-## Descargar
+Next up: notifications, messages, profiles, invitations.
 
-Para usuario final, descarga el binario desde la pagina de releases:
+The internal API is undocumented and changes without notice. If a command stops
+working, see [When LinkedIn changes something](#when-linkedin-changes-something).
 
-- Linux: `linkedin-cli-linux`
-- Windows: `linkedin-cli.exe`
+## Install
 
-No necesitas instalar Python, Playwright, Chromium ni crear un `.env`.
+Download the binary for your platform from the releases page:
 
-En Linux, dale permisos de ejecucion una vez:
+- Linux x86_64: `linkedin-cli-linux`
+- Windows x86_64: `linkedin-cli.exe`
+
+The binary includes Chromium; there is nothing else to install. On Linux, make it executable once:
 
 ```bash
 chmod +x linkedin-cli-linux
 ./linkedin-cli-linux --help
 ```
 
-En Windows:
+Releases built from branches other than `main` are marked as prereleases.
 
-```powershell
-.\linkedin-cli.exe --help
-```
+## First use
 
-## Primer Uso
-
-Configura tu cuenta una vez:
+Log in once. A browser window opens; type your password in the terminal (or use
+`--manual` to type everything in the browser):
 
 ```bash
-./linkedin-cli-linux auth --email tu-email@example.com --save-password
+linkedin-cli auth login --email you@example.com
 ```
 
-En Windows:
+If LinkedIn asks for 2FA, a captcha or another check, complete it in the
+browser window and press Enter in the terminal. The session stays in the
+browser profile, so you don't need to log in again until LinkedIn ends it.
 
-```powershell
-.\linkedin-cli.exe auth --email tu-email@example.com --save-password
-```
+Add `--save-password` to store the password in the system keyring (macOS
+Keychain, Windows Credential Manager, Secret Service on Linux). It is never
+written to a file.
 
-El CLI abre LinkedIn en un navegador Chromium incluido en el binario. Si LinkedIn pide 2FA, captcha o checkpoint, completa ese paso en la ventana del navegador y vuelve a la terminal.
-
-Despues puedes trabajar directamente:
+## Usage
 
 ```bash
-./linkedin-cli-linux draft --idea "Lo que aprendi automatizando procesos internos con IA"
-./linkedin-cli-linux prepare-post --text-file post.txt
+linkedin-cli auth status          # are we logged in? (one API request)
+linkedin-cli me
+linkedin-cli feed -n 20           # 1-50 posts
+linkedin-cli feed --full          # complete post texts
+linkedin-cli feed --json | jq '.[] | {author, url}'
 ```
 
-## Instalacion Para Desarrollo
+Global options work before or after the command:
 
-Solo necesitas esto si vas a modificar el codigo:
+- `--json`: machine-readable output
+- `--headed`: show the browser window for API commands
+- `-v` / `--verbose`: debug logs, including every API request
+
+### Posts
+
+```bash
+linkedin-cli post draft "What I learned shipping a CLI" --tone technical --length short -o post.txt
+# edit post.txt and fill in the [placeholders]
+linkedin-cli post preview --text-file post.txt
+linkedin-cli post compose --text-file post.txt
+```
+
+`post draft` builds an outline offline: a hook, sections to fill in, and a
+closing question. Tones: `professional`, `technical`, `casual`, `founder`,
+`educational`. Lengths: `short`, `medium`, `long`.
+
+`post compose` refuses text that is empty, too long or still has
+`[placeholders]`. It puts the text in LinkedIn's editor and waits. Type
+`publish` to publish it, or press Enter and finish in the browser yourself.
+
+## Staying under the radar
+
+Restrictions are mostly triggered by volume, by machine-like regularity, and by
+requests that don't look like they come from a real browser. So:
+
+- **Requests come from the browser itself.** API calls are `fetch()` calls made
+  from a linkedin.com page in your persistent Chromium profile, with its real
+  cookies, headers and fingerprint. In headless mode, the "HeadlessChrome"
+  markers in the User-Agent and client hints are removed, and
+  `navigator.webdriver` is off.
+- **No page load burst.** Commands don't load the LinkedIn web app; only the
+  API calls you asked for are sent.
+- **Randomized pacing.** Each request waits a random 2-6 s after the previous
+  one, sometimes longer, also across separate commands.
+- **Budgets.** At most 60 requests per hour and 300 per 24 h by default.
+  `linkedin-cli limits` shows the current usage.
+- **Back off when LinkedIn pushes back.** A security challenge pauses all
+  requests for 6 h; HTTP 429/999 pauses them for 1 h. Check the account with
+  `linkedin-cli open`, then lift the pause with `linkedin-cli limits --clear-cooldown`.
+- **No automatic re-login.** An expired session is reported, never fixed
+  behind your back. Logging in again and again is a red flag for LinkedIn.
+- **No bulk features.** No mass profile views, search scraping, or bulk
+  invitations or messages, by design.
+
+Also avoid running it from datacenter or VPN IP addresses, and be careful with
+brand-new accounts.
+
+## Configuration
+
+Nothing is required. Environment variables for advanced use:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `HEADLESS` | `true` | Hide the browser for API commands (interactive commands always show it) |
+| `REQUEST_MIN_DELAY` / `REQUEST_MAX_DELAY` | `2` / `6` | Seconds between requests (minimum 1) |
+| `HOURLY_REQUEST_BUDGET` / `DAILY_REQUEST_BUDGET` | `60` / `300` | Request budgets |
+| `DEFAULT_TIMEOUT_MS` | `30000` | Browser and request timeout |
+| `MAX_POST_CHARS` | `3000` | Post length limit |
+| `LINKEDIN_STATE_DIR` | see below | Where all local data lives |
+| `BROWSER_PROFILE_DIR`, `DEBUG_DIR` | inside the state dir | Override single locations |
+
+## Data on your computer
+
+Everything lives in the state directory:
+
+- Linux: `$XDG_STATE_HOME/linkedin-mecha-warrior` (usually `~/.local/state/linkedin-mecha-warrior`)
+- Windows: `%LOCALAPPDATA%\LinkedinMechaWarrior`
+- macOS: `~/Library/Application Support/LinkedinMechaWarrior`
+
+| Path | Contents |
+|---|---|
+| `browser-profile/` | The Chromium profile. **Its cookies are your LinkedIn session; protect it like a password.** |
+| `request-log.json` | Request timestamps and cooldowns, used for pacing |
+| `captures/` | Output of `capture`. Can contain private data such as messages |
+| `debug/` | Screenshots of the visible window when a browser flow fails |
+
+`auth logout` deletes the LinkedIn cookies from the profile.
+
+## When LinkedIn changes something
+
+1. `linkedin-cli -v <command>` shows each request and LinkedIn's response status.
+2. `linkedin-cli api get /some/path -p key=value` shows the raw JSON of any endpoint.
+3. `linkedin-cli capture` opens the browser and records every API call the
+   LinkedIn web app makes while you browse (request headers are never saved).
+   Open the page whose data you want, press Enter, and read the `.jsonl` file
+   to see the current endpoint, parameters and response shape.
+
+That is also how new commands get built: capture what the web app does, then
+add the endpoint and a parser in `linkedin_automation/api.py`.
+
+## Development
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
-pip install -e .
-```
-
-Si quieres generar un ejecutable compilado, instala tambien las dependencias de build:
-
-```bash
-pip install -e ".[build]"
-```
-
-## Configuracion Avanzada
-
-No hace falta configurar nada para usar el binario. Si quieres cambiar rutas o limites, puedes usar variables de entorno:
-
-```bash
-LINKEDIN_URL=https://www.linkedin.com/feed/
-BROWSER_PROFILE_DIR=/ruta/a/perfil
-DEBUG_DIR=/ruta/a/debug
-HEADLESS=false
-DEFAULT_TIMEOUT_MS=30000
-MAX_POST_CHARS=3000
-ALLOW_AUTO_PUBLISH=false
-```
-
-No pongas credenciales en variables de entorno. La contrasena se pide en terminal cuando ejecutas `auth` o `login`; si usas `--save-password`, se guarda con `keyring` en el llavero seguro del sistema. La sesion tambien se conserva en el perfil persistente del navegador.
-
-## Uso
-
-Generar un borrador:
-
-```bash
-linkedin-cli draft \
-  --idea "Lo que aprendi automatizando procesos internos con IA" \
-  --tone profesional \
-  --length media
-```
-
-Guardar el borrador en un archivo:
-
-```bash
-linkedin-cli draft \
-  --idea "Lo que aprendi automatizando procesos internos con IA" \
-  --tone profesional \
-  --length media \
-  --output post.txt
-```
-
-Vista previa sin abrir LinkedIn:
-
-```bash
-linkedin-cli preview --text-file post.txt
-```
-
-Abrir LinkedIn con perfil persistente:
-
-```bash
-linkedin-cli open --keep-open
-```
-
-Verificar si hay sesion activa:
-
-```bash
-linkedin-cli status
-```
-
-Iniciar sesion desde la terminal:
-
-```bash
-linkedin-cli auth --email tu-email@example.com --keep-open
-```
-
-El comando pedira la contrasena con un prompt seguro:
-
-```text
-LinkedIn password:
-```
-
-Guardar la contrasena de forma segura en el llavero del sistema tras un login correcto:
-
-```bash
-linkedin-cli auth --email tu-email@example.com --save-password
-```
-
-Despues, puedes iniciar sesion usando la contrasena guardada:
-
-```bash
-linkedin-cli auth --email tu-email@example.com
-```
-
-Si omites `--email`, el CLI intenta usar la ultima cuenta guardada en el llavero:
-
-```bash
-linkedin-cli auth
-```
-
-Borrar la contrasena guardada:
-
-```bash
-linkedin-cli auth --email tu-email@example.com --forget-password
-```
-
-Tambien puedes usar el alias `login`:
-
-```bash
-linkedin-cli login --email tu-email@example.com
-```
-
-Si prefieres escribir todo directamente en el navegador o LinkedIn muestra 2FA, captcha o un checkpoint:
-
-```bash
-linkedin-cli auth --manual --keep-open
-```
-
-Preparar un post en el editor de LinkedIn:
-
-```bash
-linkedin-cli prepare-post --text-file post.txt
-```
-
-Publicacion automatica protegida:
-
-```bash
-ALLOW_AUTO_PUBLISH=true linkedin-cli prepare-post \
-  --text-file post.txt \
-  --publish
-```
-
-Tambien puedes ejecutar el modulo directamente si no instalas el comando:
-
-```bash
-python -m linkedin_automation.cli status
-```
-
-Aunque el flag este presente, la herramienta pedira escribir `PUBLICAR`. Si falta la variable, el flag o la confirmacion exacta, no publica.
-
-## Tonos y longitudes
-
-Tonos disponibles:
-
-- `profesional`
-- `tecnico` o `técnico`
-- `cercano`
-- `fundador`, `startup` o `fundador/startup`
-- `educativo`
-
-Longitudes disponibles:
-
-- `corta`
-- `media`
-- `larga`
-
-## Estructura
-
-```text
-linkedin_automation/
-  __init__.py
-  __main__.py
-  browser.py
-  cli.py
-  config.py
-  credentials.py
-  linkedin.py
-  post_generator.py
-  utils.py
-.github/
-  workflows/
-    release-on-push.yml
-scripts/
-  build_binary.py
-  linkedin_cli_entry.py
-tests/
-  test_cli.py
-  test_config.py
-  test_credentials.py
-  test_post_generator.py
-pyproject.toml
-requirements.txt
-```
-
-## Diagnostico
-
-Si LinkedIn cambia la interfaz, el comando `prepare-post` puede fallar con errores como:
-
-- sesion no autenticada
-- editor no encontrado
-- timeout
-- post demasiado largo
-- llavero seguro no disponible al usar `--save-password`
-
-Cuando hay un fallo de navegador, se intenta guardar una captura en `debug/` para revisar que estaba mostrando LinkedIn.
-
-## Tests
-
-```bash
+pip install -e ".[dev]"
+python -m playwright install chromium
 pytest
 ```
 
-Los tests cubren la generacion local de posts y la validacion de configuracion. No abren LinkedIn.
+Tests never contact LinkedIn. The browser integration tests run a real
+Chromium against a mocked linkedin.com in which unexpected requests are blocked;
+they are skipped when Chromium is not installed.
 
-## Compilar
+```text
+linkedin_automation/
+  cli.py             command-line interface
+  voyager.py         internal API client (in-browser fetch, error handling)
+  pacing.py          randomized delays, budgets, cooldowns
+  api.py             endpoints and response parsers
+  normalized.py      helpers for Voyager's normalized JSON
+  models.py          Profile, FeedPost
+  browser.py         persistent Chromium session, fingerprint fixes
+  ui.py              login and post composer flows in the web UI
+  capture.py         API traffic recorder
+  post_generator.py  offline post outlines
+  credentials.py     system keyring
+  config.py, runtime.py, output.py, errors.py, utils.py
+```
 
-Puedes crear un ejecutable local con PyInstaller:
+### Building a binary
 
 ```bash
-source .venv/bin/activate
 pip install -e ".[build]"
-python scripts/build_binary.py --clean
+python scripts/build_binary.py --clean          # single file, Chromium included
+python scripts/build_binary.py --onedir --clean # folder, easier to inspect
 ```
 
-El binario queda en:
+The binary is written to `dist/`. It contains no passwords, sessions or screenshots.
 
-```bash
-dist/linkedin-cli
-```
+### Releases
 
-Uso del binario:
+`.github/workflows/release-on-push.yml` builds every pushed commit on Linux and
+Windows, runs the tests, and publishes a release tagged
+`v<version>-build.<run>.<commit-index>` with `linkedin-cli-linux` and
+`linkedin-cli.exe`. Pushes to `main` create regular releases, while pushes to
+other branches create prereleases. Only the release job has write access to the
+repository.
 
-```bash
-./dist/linkedin-cli --help
-./dist/linkedin-cli draft --idea "Lo que aprendi automatizando procesos internos con IA"
-```
+## License
 
-Notas importantes:
-
-- El ejecutable incluye Chromium de Playwright.
-- El ejecutable no incluye contrasenas, sesiones ni screenshots.
-- La sesion se crea en la carpeta de datos de usuario de la maquina final.
-- `--save-password` sigue usando el llavero seguro del sistema de la maquina donde se ejecuta el binario.
-
-Tambien puedes construir en modo carpeta, mas facil de inspeccionar y depurar:
-
-```bash
-python scripts/build_binary.py --onedir --clean
-```
-
-## Releases Automaticos
-
-El repositorio incluye un workflow de GitHub Actions en `.github/workflows/release-on-push.yml`.
-
-Cada `push` a una rama compila todos los commits incluidos en ese push y crea un release versionado por commit con tag:
-
-```text
-v<version-pyproject>-build.<github-run-number>.<commit-index>
-```
-
-Ejemplo:
-
-```text
-v0.1.0-build.12.1
-```
-
-Cada release incluye dos assets directos, sin `.zip` ni `.tar.gz` propios:
-
-- Linux x86_64: `linkedin-cli-linux`
-- Windows x86_64: `linkedin-cli.exe`
-
-El workflow:
-
-- ejecuta tests antes de empaquetar
-- compila con PyInstaller en `ubuntu-latest` y `windows-latest`
-- incluye Chromium de Playwright dentro del ejecutable
-- sube solo los binarios compilados como assets del release
-- actualiza el release si se re-ejecuta para el mismo commit
-
-GitHub siempre anade automaticamente los assets `Source code (zip)` y `Source code (tar.gz)` a cualquier release. No forman parte del empaquetado de la aplicacion.
-
-Para que pueda crear releases, el workflow usa:
-
-```yaml
-permissions:
-  contents: write
-```
+MIT
