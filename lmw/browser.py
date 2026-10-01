@@ -51,7 +51,7 @@ class BrowserSession:
             self.playwright.stop()
             if any(marker in str(exc).lower() for marker in _PROFILE_IN_USE_MARKERS):
                 raise BrowserProfileInUseError(
-                    "The LinkedIn browser profile is already open in another linkedin-cli window. Close it and retry."
+                    "The LinkedIn browser profile is already open in another lmw window. Close it and retry."
                 ) from exc
             raise
         self.context.set_default_timeout(self.config.default_timeout_ms)

@@ -2,8 +2,8 @@ import json
 
 import pytest
 
-from linkedin_automation import cli
-from linkedin_automation.cli import build_parser, main
+from lmw import cli
+from lmw.cli import build_parser, main
 
 
 @pytest.fixture(autouse=True)

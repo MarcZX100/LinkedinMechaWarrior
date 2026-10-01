@@ -32,7 +32,7 @@ Handler = Callable[[argparse.Namespace, AppConfig], int]
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="linkedin-cli",
+        prog="lmw",
         description="A command-line client for LinkedIn, built on the persistent browser session.",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -291,7 +291,7 @@ def _cmd_feed(args: argparse.Namespace, config: AppConfig) -> int:
     if args.json:
         print_json([post.to_dict() for post in posts])
     elif not posts:
-        print("No posts found. If your feed is not empty, LinkedIn may have changed its API; see `linkedin-cli capture`.")
+        print("No posts found. If your feed is not empty, LinkedIn may have changed its API; see `lmw capture`.")
     else:
         print("\n\n".join(format_feed_post(post, full=args.full) for post in posts))
     return 0

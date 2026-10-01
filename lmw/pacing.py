@@ -64,8 +64,8 @@ class RequestPacer:
             until = datetime.fromtimestamp(state.cooldown_until).strftime("%H:%M")
             raise CooldownActiveError(
                 f"Requests are paused until {until} because LinkedIn pushed back: {state.cooldown_reason}. "
-                "Check the account in the browser with `linkedin-cli open`. "
-                "Use `linkedin-cli limits --clear-cooldown` only once you are sure it is fine."
+                "Check the account in the browser with `lmw open`. "
+                "Use `lmw limits --clear-cooldown` only once you are sure it is fine."
             )
         if len(state.requests) >= self.daily_budget:
             raise BudgetExceededError(

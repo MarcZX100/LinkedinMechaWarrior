@@ -98,13 +98,13 @@ class LinkedInUI:
             return
         save_diagnostic_screenshot(self.page, self.config.debug_dir, "login-not-completed")
         if self.needs_security_check():
-            raise ChallengeError("LinkedIn is still showing a security check. Finish it with `linkedin-cli open`.")
+            raise ChallengeError("LinkedIn is still showing a security check. Finish it with `lmw open`.")
         raise AuthenticationRequiredError("The LinkedIn session was not detected after logging in.")
 
     def prepare_post(self, text: str) -> None:
         self.goto_feed()
         if not self.is_logged_in():
-            raise AuthenticationRequiredError("You are not logged in. Run `linkedin-cli auth login` first.")
+            raise AuthenticationRequiredError("You are not logged in. Run `lmw auth login` first.")
         try:
             start_button = self.page.get_by_role("button", name=_START_POST).first
             start_button.wait_for(state="visible")

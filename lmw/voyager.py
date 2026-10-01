@@ -102,7 +102,7 @@ class VoyagerClient:
 
     def connect(self) -> None:
         if not self.session.has_session_cookie():
-            raise AuthenticationRequiredError("You are not logged in. Run `linkedin-cli auth login` first.")
+            raise AuthenticationRequiredError("You are not logged in. Run `lmw auth login` first.")
 
         page = self.session.page
         page.route(
@@ -143,7 +143,7 @@ class VoyagerClient:
 
         csrf_token = self.session.linkedin_cookies().get("JSESSIONID", "").strip('"')
         if not csrf_token:
-            raise AuthenticationRequiredError("The LinkedIn session cookies are incomplete. Run `linkedin-cli auth login`.")
+            raise AuthenticationRequiredError("The LinkedIn session cookies are incomplete. Run `lmw auth login`.")
 
         headers = {
             "accept": accept,
@@ -187,18 +187,18 @@ class VoyagerClient:
         if any(marker in final_url for marker in _CHALLENGE_URL_MARKERS):
             self._challenge("LinkedIn redirected the request to a security checkpoint")
         if any(marker in final_url for marker in _LOGIN_URL_MARKERS):
-            raise AuthenticationRequiredError("The LinkedIn session has expired. Run `linkedin-cli auth login`.")
+            raise AuthenticationRequiredError("The LinkedIn session has expired. Run `lmw auth login`.")
         if response.status in (429, 999):
             reason = f"HTTP {response.status} (too many requests)"
             self.pacer.start_cooldown(RATE_LIMIT_COOLDOWN_S, reason)
             raise RateLimitedError(f"LinkedIn rate-limited the session: {reason}. Requests are paused for an hour.")
         if response.status == 401:
-            raise AuthenticationRequiredError("The LinkedIn session has expired. Run `linkedin-cli auth login`.")
+            raise AuthenticationRequiredError("The LinkedIn session has expired. Run `lmw auth login`.")
         if response.status == 403:
             lowered = response.text.lower()
             if "csrf" in lowered:
                 raise AuthenticationRequiredError(
-                    "LinkedIn rejected the session token (CSRF). Run `linkedin-cli auth login`."
+                    "LinkedIn rejected the session token (CSRF). Run `lmw auth login`."
                 )
             if "challenge" in lowered:
                 self._challenge("LinkedIn answered with a CHALLENGE")
@@ -217,6 +217,6 @@ class VoyagerClient:
     def _challenge(self, reason: str) -> None:
         self.pacer.start_cooldown(CHALLENGE_COOLDOWN_S, reason)
         raise ChallengeError(
-            f"{reason}. Requests are paused. Open the browser with `linkedin-cli open`, "
-            "complete the security check by hand, then run `linkedin-cli limits --clear-cooldown`."
+            f"{reason}. Requests are paused. Open the browser with `lmw open`, "
+            "complete the security check by hand, then run `lmw limits --clear-cooldown`."
         )

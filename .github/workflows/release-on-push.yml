@@ -24,12 +24,12 @@ jobs:
         include:
           - os: ubuntu-latest
             platform: linux-x86_64
-            binary_name: linkedin-cli-linux-x86_64
-            executable_name: linkedin-cli
+            binary_name: lmw-linux-x86_64
+            executable_name: lmw
           - os: windows-latest
             platform: windows-x86_64
-            binary_name: linkedin-cli-windows-x86_64
-            executable_name: linkedin-cli.exe
+            binary_name: lmw-windows-x86_64
+            executable_name: lmw.exe
 
     steps:
       - name: Checkout repository
@@ -203,10 +203,10 @@ jobs:
             SHORT_SHA="${COMMIT_SHA:0:12}"
             VERSION="v${BASE_VERSION}-build.${GITHUB_RUN_NUMBER}.${COMMIT_INDEX}"
             RELEASE_TAG="${VERSION}"
-            RELEASE_TITLE="LinkedIn CLI ${VERSION}"
+            RELEASE_TITLE="LinkedinMechaWarrior ${VERSION}"
 
-            LINUX_ASSET="release-assets/${VERSION}/linux-x86_64/linkedin-cli"
-            WINDOWS_ASSET="release-assets/${VERSION}/windows-x86_64/linkedin-cli.exe"
+            LINUX_ASSET="release-assets/${VERSION}/linux-x86_64/lmw"
+            WINDOWS_ASSET="release-assets/${VERSION}/windows-x86_64/lmw.exe"
 
             if [ ! -f "$LINUX_ASSET" ] || [ ! -f "$WINDOWS_ASSET" ]; then
               echo "Missing release assets for ${VERSION} (${COMMIT_SHA})" >&2
@@ -216,16 +216,16 @@ jobs:
 
             rm -rf upload-assets
             mkdir -p upload-assets
-            cp "$LINUX_ASSET" upload-assets/linkedin-cli-linux
-            cp "$WINDOWS_ASSET" upload-assets/linkedin-cli.exe
+            cp "$LINUX_ASSET" upload-assets/lmw-linux
+            cp "$WINDOWS_ASSET" upload-assets/lmw.exe
 
             NOTES_FILE="$(mktemp)"
             cat > "$NOTES_FILE" <<EOF
           Automated release \`${VERSION}\` for commit \`${COMMIT_SHA}\` on branch \`${BRANCH}\`.
 
           Assets:
-          - \`linkedin-cli-linux\`
-          - \`linkedin-cli.exe\`
+          - \`lmw-linux\`
+          - \`lmw.exe\`
 
           Notes:
           - Built with PyInstaller.
@@ -241,8 +241,8 @@ jobs:
                 --notes-file "$NOTES_FILE" \
                 --prerelease="$PRERELEASE"
               gh release upload "$RELEASE_TAG" \
-                upload-assets/linkedin-cli-linux \
-                upload-assets/linkedin-cli.exe \
+                upload-assets/lmw-linux \
+                upload-assets/lmw.exe \
                 --repo "$REPOSITORY" \
                 --clobber
             else
@@ -251,8 +251,8 @@ jobs:
                 PRERELEASE_FLAG=(--prerelease)
               fi
               gh release create "$RELEASE_TAG" \
-                upload-assets/linkedin-cli-linux \
-                upload-assets/linkedin-cli.exe \
+                upload-assets/lmw-linux \
+                upload-assets/lmw.exe \
                 --repo "$REPOSITORY" \
                 --target "$COMMIT_SHA" \
                 --title "$RELEASE_TITLE" \

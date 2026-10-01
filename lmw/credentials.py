@@ -84,6 +84,6 @@ class CredentialStore:
         except KeyringError as exc:
             raise CredentialStoreError(
                 "Could not access a secure system keyring. Configure an OS keychain backend, "
-                "or use `linkedin-cli auth login --manual` without saved credentials. "
+                "or use `lmw auth login --manual` without saved credentials. "
                 f"Original error: {exc}"
             ) from exc

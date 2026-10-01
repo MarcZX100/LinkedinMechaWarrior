@@ -1,7 +1,7 @@
 import pytest
 
-from linkedin_automation.api import get_feed, parse_feed, parse_me
-from linkedin_automation.errors import VoyagerError
+from lmw.api import get_feed, parse_feed, parse_me
+from lmw.errors import VoyagerError
 
 ME_PAYLOAD = {
     "data": {"plainId": 123, "*miniProfile": "urn:li:fs_miniProfile:ACoAAB"},

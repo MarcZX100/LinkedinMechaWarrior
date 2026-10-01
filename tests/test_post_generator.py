@@ -1,7 +1,7 @@
 import pytest
 
-from linkedin_automation.errors import PostGenerationError, PostValidationError
-from linkedin_automation.post_generator import find_placeholders, generate_post, validate_post_text
+from lmw.errors import PostGenerationError, PostValidationError
+from lmw.post_generator import find_placeholders, generate_post, validate_post_text
 
 
 def test_generate_post_has_hook_sections_and_closing_question():

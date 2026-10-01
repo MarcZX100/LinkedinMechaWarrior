@@ -7,12 +7,12 @@ Playwright Chromium build is not installed.
 import pytest
 from playwright.sync_api import Error as PlaywrightError, sync_playwright
 
-from linkedin_automation.api import get_me
-from linkedin_automation.browser import BrowserSession
-from linkedin_automation.config import load_config
-from linkedin_automation.errors import CooldownActiveError, RateLimitedError
-from linkedin_automation.pacing import RequestPacer
-from linkedin_automation.voyager import VoyagerClient
+from lmw.api import get_me
+from lmw.browser import BrowserSession
+from lmw.config import load_config
+from lmw.errors import CooldownActiveError, RateLimitedError
+from lmw.pacing import RequestPacer
+from lmw.voyager import VoyagerClient
 
 ME_PAYLOAD = {
     "data": {"*miniProfile": "urn:li:fs_miniProfile:1"},
@@ -136,7 +136,7 @@ def serve_feed(browser):
 
 
 def test_composer_publishes_with_the_dialog_button_only(config):
-    from linkedin_automation.ui import LinkedInUI
+    from lmw.ui import LinkedInUI
 
     with BrowserSession(config) as browser:
         add_session_cookies(browser.context)
@@ -154,7 +154,7 @@ def test_composer_publishes_with_the_dialog_button_only(config):
 def test_capture_records_api_responses_while_waiting(config, monkeypatch):
     import json
 
-    from linkedin_automation import capture
+    from lmw import capture
 
     def browse_then_press_enter(page, prompt):
         page.evaluate("fetch('/voyager/api/me?x=1', {headers: {'csrf-token': 'secret'}})")

@@ -9,12 +9,12 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-ENTRYPOINT = ROOT / "scripts" / "linkedin_cli_entry.py"
+ENTRYPOINT = ROOT / "scripts" / "lmw_entry.py"
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Build the linkedin-cli executable with PyInstaller.")
-    parser.add_argument("--name", default="linkedin-cli", help="Executable name.")
+    parser = argparse.ArgumentParser(description="Build the lmw executable with PyInstaller.")
+    parser.add_argument("--name", default="lmw", help="Executable name.")
     parser.add_argument("--onedir", action="store_true", help="Build a folder instead of a single-file executable.")
     parser.add_argument("--clean", action="store_true", help="Remove previous build artifacts before building.")
     parser.add_argument(

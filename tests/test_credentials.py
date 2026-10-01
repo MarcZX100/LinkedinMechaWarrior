@@ -3,8 +3,8 @@ import types
 
 import pytest
 
-from linkedin_automation.credentials import CredentialStore
-from linkedin_automation.errors import CredentialStoreError
+from lmw.credentials import CredentialStore
+from lmw.errors import CredentialStoreError
 
 
 def install_fake_keyring(monkeypatch):

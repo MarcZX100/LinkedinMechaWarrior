@@ -23,10 +23,10 @@ dev = [
 ]
 
 [project.scripts]
-linkedin-cli = "linkedin_automation.cli:main"
+lmw = "lmw.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["linkedin_automation*"]
+include = ["lmw*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

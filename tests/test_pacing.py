@@ -2,8 +2,8 @@ import random
 
 import pytest
 
-from linkedin_automation.errors import BudgetExceededError, CooldownActiveError
-from linkedin_automation.pacing import DAY_S, HOUR_S, RequestPacer
+from lmw.errors import BudgetExceededError, CooldownActiveError
+from lmw.pacing import DAY_S, HOUR_S, RequestPacer
 
 
 class FakeClock:

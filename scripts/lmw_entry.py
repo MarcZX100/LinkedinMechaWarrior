@@ -1,4 +1,4 @@
-from linkedin_automation.cli import main
+from lmw.cli import main
 
 
 if __name__ == "__main__":

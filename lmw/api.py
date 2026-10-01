@@ -1,8 +1,8 @@
 """High-level LinkedIn operations on top of the Voyager client.
 
 Endpoints and response shapes are undocumented. Parsers here never assume a
-field exists; when LinkedIn changes something, use `linkedin-cli api get` or
-`linkedin-cli capture` to inspect the current responses.
+field exists; when LinkedIn changes something, use `lmw api get` or
+`lmw capture` to inspect the current responses.
 """
 
 from __future__ import annotations
@@ -50,7 +50,7 @@ def parse_me(payload: Any) -> Profile:
         candidates = normalized.of_type("MiniProfile")
         mini = candidates[0] if candidates else None
     if mini is None:
-        raise VoyagerError("Unexpected response from /me: no profile found. Inspect it with `linkedin-cli api get /me`.")
+        raise VoyagerError("Unexpected response from /me: no profile found. Inspect it with `lmw api get /me`.")
     return Profile(
         urn=mini.get("dashEntityUrn") or mini.get("entityUrn"),
         public_id=mini.get("publicIdentifier"),

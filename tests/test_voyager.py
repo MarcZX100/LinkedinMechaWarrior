@@ -3,14 +3,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from linkedin_automation.errors import (
+from lmw.errors import (
     AuthenticationRequiredError,
     ChallengeError,
     RateLimitedError,
     VoyagerError,
     VoyagerHTTPError,
 )
-from linkedin_automation.voyager import VoyagerClient, build_url
+from lmw.voyager import VoyagerClient, build_url
 
 
 class FakePacer:

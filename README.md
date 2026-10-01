@@ -1,6 +1,7 @@
 # LinkedinMechaWarrior
 
-A command-line client for LinkedIn, for your own account.
+A command-line client for LinkedIn, for your own account. The command is
+`lmw`, short for **L**inkedin**M**echa**W**arrior.
 
 It talks to LinkedIn's internal web API ("Voyager") from inside a real Chromium
 browser that keeps your session in a persistent profile. Reading your feed or
@@ -36,14 +37,14 @@ working, see [When LinkedIn changes something](#when-linkedin-changes-something)
 
 Download the binary for your platform from the releases page:
 
-- Linux x86_64: `linkedin-cli-linux`
-- Windows x86_64: `linkedin-cli.exe`
+- Linux x86_64: `lmw-linux`
+- Windows x86_64: `lmw.exe`
 
 The binary includes Chromium; there is nothing else to install. On Linux, make it executable once:
 
 ```bash
-chmod +x linkedin-cli-linux
-./linkedin-cli-linux --help
+chmod +x lmw-linux
+./lmw-linux --help
 ```
 
 Releases built from branches other than `main` are marked as prereleases.
@@ -54,7 +55,7 @@ Log in once. A browser window opens; type your password in the terminal (or use
 `--manual` to type everything in the browser):
 
 ```bash
-linkedin-cli auth login --email you@example.com
+lmw auth login --email you@example.com
 ```
 
 If LinkedIn asks for 2FA, a captcha or another check, complete it in the
@@ -68,11 +69,11 @@ written to a file.
 ## Usage
 
 ```bash
-linkedin-cli auth status          # are we logged in? (one API request)
-linkedin-cli me
-linkedin-cli feed -n 20           # 1-50 posts
-linkedin-cli feed --full          # complete post texts
-linkedin-cli feed --json | jq '.[] | {author, url}'
+lmw auth status          # are we logged in? (one API request)
+lmw me
+lmw feed -n 20           # 1-50 posts
+lmw feed --full          # complete post texts
+lmw feed --json | jq '.[] | {author, url}'
 ```
 
 Global options work before or after the command:
@@ -84,10 +85,10 @@ Global options work before or after the command:
 ### Posts
 
 ```bash
-linkedin-cli post draft "What I learned shipping a CLI" --tone technical --length short -o post.txt
+lmw post draft "What I learned shipping a CLI" --tone technical --length short -o post.txt
 # edit post.txt and fill in the [placeholders]
-linkedin-cli post preview --text-file post.txt
-linkedin-cli post compose --text-file post.txt
+lmw post preview --text-file post.txt
+lmw post compose --text-file post.txt
 ```
 
 `post draft` builds an outline offline: a hook, sections to fill in, and a
@@ -113,10 +114,10 @@ requests that don't look like they come from a real browser. So:
 - **Randomized pacing.** Each request waits a random 2-6 s after the previous
   one, sometimes longer, also across separate commands.
 - **Budgets.** At most 60 requests per hour and 300 per 24 h by default.
-  `linkedin-cli limits` shows the current usage.
+  `lmw limits` shows the current usage.
 - **Back off when LinkedIn pushes back.** A security challenge pauses all
   requests for 6 h; HTTP 429/999 pauses them for 1 h. Check the account with
-  `linkedin-cli open`, then lift the pause with `linkedin-cli limits --clear-cooldown`.
+  `lmw open`, then lift the pause with `lmw limits --clear-cooldown`.
 - **No automatic re-login.** An expired session is reported, never fixed
   behind your back. Logging in again and again is a red flag for LinkedIn.
 - **No bulk features.** No mass profile views, search scraping, or bulk
@@ -158,15 +159,15 @@ Everything lives in the state directory:
 
 ## When LinkedIn changes something
 
-1. `linkedin-cli -v <command>` shows each request and LinkedIn's response status.
-2. `linkedin-cli api get /some/path -p key=value` shows the raw JSON of any endpoint.
-3. `linkedin-cli capture` opens the browser and records every API call the
+1. `lmw -v <command>` shows each request and LinkedIn's response status.
+2. `lmw api get /some/path -p key=value` shows the raw JSON of any endpoint.
+3. `lmw capture` opens the browser and records every API call the
    LinkedIn web app makes while you browse (request headers are never saved).
    Open the page whose data you want, press Enter, and read the `.jsonl` file
    to see the current endpoint, parameters and response shape.
 
 That is also how new commands get built: capture what the web app does, then
-add the endpoint and a parser in `linkedin_automation/api.py`.
+add the endpoint and a parser in `lmw/api.py`.
 
 ## Development
 
@@ -183,7 +184,7 @@ Chromium against a mocked linkedin.com in which unexpected requests are blocked;
 they are skipped when Chromium is not installed.
 
 ```text
-linkedin_automation/
+lmw/
   cli.py             command-line interface
   voyager.py         internal API client (in-browser fetch, error handling)
   pacing.py          randomized delays, budgets, cooldowns
@@ -212,8 +213,8 @@ The binary is written to `dist/`. It contains no passwords, sessions or screensh
 
 `.github/workflows/release-on-push.yml` builds every pushed commit on Linux and
 Windows, runs the tests, and publishes a release tagged
-`v<version>-build.<run>.<commit-index>` with `linkedin-cli-linux` and
-`linkedin-cli.exe`. Pushes to `main` create regular releases, while pushes to
+`v<version>-build.<run>.<commit-index>` with `lmw-linux` and
+`lmw.exe`. Pushes to `main` create regular releases, while pushes to
 other branches create prereleases. Only the release job has write access to the
 repository.
 

@@ -2,7 +2,7 @@ import sys
 
 import pytest
 
-from linkedin_automation.config import AppConfig
+from lmw.config import AppConfig
 
 CONFIG_VARS = (
     "LINKEDIN_STATE_DIR",
