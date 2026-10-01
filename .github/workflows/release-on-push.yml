@@ -6,7 +6,7 @@ on:
       - "**"
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-on-push-${{ github.ref }}
@@ -102,9 +102,13 @@ jobs:
             git checkout --force "$COMMIT_SHA"
 
             python -m pip install -e ".[dev]"
+            if [ "$RUNNER_OS" = "Linux" ]; then
+              python -m playwright install --with-deps chromium
+            else
+              python -m playwright install chromium
+            fi
             python -m pytest
-            python -m playwright install chromium
-            python scripts/build_binary.py --clean --name "$BINARY_NAME"
+            python scripts/build_binary.py --clean --skip-browser-install --name "$BINARY_NAME"
 
             mkdir -p "$OUTPUT_DIR"
 
@@ -130,6 +134,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     if: github.event.deleted == false
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout repository
@@ -148,8 +154,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
+
+          # Only the default branch produces regular releases; other branches
+          # produce prereleases so they never become the "Latest" release.
+          if [ "$BRANCH" = "$DEFAULT_BRANCH" ]; then
+            PRERELEASE=false
+          else
+            PRERELEASE=true
+          fi
 
           python - <<'PY' > /tmp/pushed-commits.txt
           import json
@@ -205,7 +221,7 @@ jobs:
 
             NOTES_FILE="$(mktemp)"
             cat > "$NOTES_FILE" <<EOF
-          Automated release \`${VERSION}\` for commit \`${COMMIT_SHA}\`.
+          Automated release \`${VERSION}\` for commit \`${COMMIT_SHA}\` on branch \`${BRANCH}\`.
 
           Assets:
           - \`linkedin-cli-linux\`
@@ -222,19 +238,25 @@ jobs:
                 --repo "$REPOSITORY" \
                 --target "$COMMIT_SHA" \
                 --title "$RELEASE_TITLE" \
-                --notes-file "$NOTES_FILE"
+                --notes-file "$NOTES_FILE" \
+                --prerelease="$PRERELEASE"
               gh release upload "$RELEASE_TAG" \
                 upload-assets/linkedin-cli-linux \
                 upload-assets/linkedin-cli.exe \
                 --repo "$REPOSITORY" \
                 --clobber
             else
+              PRERELEASE_FLAG=()
+              if [ "$PRERELEASE" = "true" ]; then
+                PRERELEASE_FLAG=(--prerelease)
+              fi
               gh release create "$RELEASE_TAG" \
                 upload-assets/linkedin-cli-linux \
                 upload-assets/linkedin-cli.exe \
                 --repo "$REPOSITORY" \
                 --target "$COMMIT_SHA" \
                 --title "$RELEASE_TITLE" \
-                --notes-file "$NOTES_FILE"
+                --notes-file "$NOTES_FILE" \
+                "${PRERELEASE_FLAG[@]}"
             fi
           done < /tmp/pushed-commits.txt
