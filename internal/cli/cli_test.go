@@ -1,0 +1,377 @@
+package cli
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"encoding/json"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	http "github.com/bogdanfinn/fhttp"
+
+	"github.com/MarcZX100/LinkedinMechaWarrior/internal/auth"
+	"github.com/MarcZX100/LinkedinMechaWarrior/internal/config"
+	"github.com/MarcZX100/LinkedinMechaWarrior/internal/identity"
+	"github.com/MarcZX100/LinkedinMechaWarrior/internal/pacing"
+	"github.com/MarcZX100/LinkedinMechaWarrior/internal/session"
+	"github.com/MarcZX100/LinkedinMechaWarrior/internal/voyager"
+)
+
+const meJSON = `{"data":{"*miniProfile":"urn:li:fs_miniProfile:1"},"included":[{"entityUrn":"urn:li:fs_miniProfile:1","firstName":"Ada","lastName":"Lovelace","publicIdentifier":"ada"}]}`
+
+const feedJSON = `{"data":{"*elements":["urn:u1"]},"included":[{"entityUrn":"urn:u1","updateMetadata":{"urn":"urn:li:activity:1"},"actor":{"name":{"text":"Grace Hopper"}},"commentary":{"text":{"text":"Hello"}}}]}`
+
+type reply struct {
+	status  int
+	body    string
+	cookies []string
+}
+
+// fakeLinkedIn answers requests by API path and records them.
+type fakeLinkedIn struct {
+	replies  map[string]reply
+	requests []*http.Request
+	bodies   []string
+}
+
+func (f *fakeLinkedIn) Do(req *http.Request) (*http.Response, error) {
+	f.requests = append(f.requests, req)
+	body := ""
+	if req.Body != nil {
+		raw, _ := io.ReadAll(req.Body)
+		body = string(raw)
+	}
+	f.bodies = append(f.bodies, body)
+	r, ok := f.replies[strings.TrimPrefix(req.URL.Path, voyager.APIPrefix)]
+	if !ok {
+		r = reply{status: 404, body: "not found"}
+	}
+	header := http.Header{"Content-Type": {"application/json"}}
+	for _, c := range r.cookies {
+		header.Add("Set-Cookie", c)
+	}
+	return &http.Response{StatusCode: r.status, Header: header, Body: io.NopCloser(strings.NewReader(r.body)), Request: req}, nil
+}
+
+type harness struct {
+	t        *testing.T
+	stateDir string
+	linkedin *fakeLinkedIn
+	sessions []auth.Candidate
+	// browserAsked is the browser name passed to the cookie search.
+	browserAsked string
+}
+
+func newHarness(t *testing.T) *harness {
+	return &harness{
+		t:        t,
+		stateDir: t.TempDir(),
+		linkedin: &fakeLinkedIn{replies: map[string]reply{
+			"/me":                         {status: 200, body: meJSON},
+			"/feed/updatesV2":             {status: 200, body: feedJSON},
+			"/contentcreation/normShares": {status: 201, body: `{"data":{"*updateV2":"urn:li:fs_updateV2:(urn:li:activity:99,FEED_DETAIL)"}}`},
+		}},
+	}
+}
+
+// run executes lmw with args and stdin, returning the exit code, stdout and stderr.
+func (h *harness) run(stdin string, args ...string) (int, string, string) {
+	var stdout, stderr bytes.Buffer
+	a := &app{
+		stdin:   bufio.NewReader(strings.NewReader(stdin)),
+		stdinFD: -1,
+		stdout:  &stdout,
+		stderr:  &stderr,
+		loadConfig: func() (config.Config, error) {
+			return config.FromEnv(func(name string) string {
+				return map[string]string{"LMW_STATE_DIR": h.stateDir, "LMW_SESSION_STORE": "file"}[name]
+			})
+		},
+		newDoer: func(identity.Identity, time.Duration) (voyager.Doer, error) { return h.linkedin, nil },
+		newPacer: func(cfg config.Config) *pacing.Pacer {
+			p := defaultPacer(cfg)
+			p.Sleep = func(time.Duration) {}
+			return p
+		},
+		newStore: func(cfg config.Config) session.Store { return session.FileStore{Path: cfg.SessionFile()} },
+		findSessions: func(_ context.Context, browser string) ([]auth.Candidate, error) {
+			h.browserAsked = browser
+			return h.sessions, nil
+		},
+	}
+	code := a.run(context.Background(), args)
+	return code, stdout.String(), stderr.String()
+}
+
+func (h *harness) mustRun(stdin string, args ...string) string {
+	h.t.Helper()
+	code, stdout, stderr := h.run(stdin, args...)
+	if code != 0 {
+		h.t.Fatalf("lmw %v exited %d\nstdout: %s\nstderr: %s", args, code, stdout, stderr)
+	}
+	return stdout
+}
+
+func (h *harness) importPasted() {
+	h.t.Helper()
+	h.mustRun("AQEDsecret\najax:42\n", "auth", "import")
+}
+
+func TestVersionHelpAndUsageErrors(t *testing.T) {
+	h := newHarness(t)
+	if out := h.mustRun("", "--version"); !strings.HasPrefix(out, "lmw ") {
+		t.Errorf("version output %q", out)
+	}
+	if out := h.mustRun("", "--help"); !strings.Contains(out, "auth") || !strings.Contains(out, "feed") {
+		t.Errorf("help output %q", out)
+	}
+	for _, args := range [][]string{{"feed", "--nope"}, {"feed", "-n", "500"}, {"api", "get"}, {"api", "get", "/me", "-p", "bad"}, {"post", "draft"}} {
+		if code, _, _ := h.run("", args...); code != 2 {
+			t.Errorf("lmw %v exited %d, want 2", args, code)
+		}
+	}
+	if len(h.linkedin.requests) != 0 {
+		t.Error("usage errors must not send requests")
+	}
+}
+
+func TestCommandsRequireASession(t *testing.T) {
+	h := newHarness(t)
+	code, _, stderr := h.run("", "me")
+	if code != 1 || !strings.Contains(stderr, "lmw auth import") {
+		t.Errorf("exit %d, stderr %q", code, stderr)
+	}
+}
+
+func TestImportPastedCookiesThenRead(t *testing.T) {
+	h := newHarness(t)
+	h.importPasted()
+
+	raw, err := os.ReadFile(filepath.Join(h.stateDir, "session.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stored session.Session
+	_ = json.Unmarshal(raw, &stored)
+	if stored.Cookies["li_at"] != "AQEDsecret" || stored.Cookies["JSESSIONID"] != `"ajax:42"` {
+		t.Errorf("unexpected stored session %+v", stored)
+	}
+	if got := h.linkedin.requests[0].Header["csrf-token"]; len(got) != 1 || got[0] != "ajax:42" {
+		t.Errorf("verification request csrf-token = %v", got)
+	}
+
+	if out := h.mustRun("", "me"); !strings.Contains(out, "Ada Lovelace") || !strings.Contains(out, "/in/ada/") {
+		t.Errorf("me output %q", out)
+	}
+	var posts []map[string]any
+	if err := json.Unmarshal([]byte(h.mustRun("", "feed", "--json", "-n", "1")), &posts); err != nil || posts[0]["author"] != "Grace Hopper" {
+		t.Errorf("feed json %v %v", posts, err)
+	}
+	if out := h.mustRun("", "auth", "status"); !strings.Contains(out, "Logged in as Ada Lovelace") || !strings.Contains(out, "pasted cookies") {
+		t.Errorf("status output %q", out)
+	}
+}
+
+func TestImportIsNotSavedWhenVerificationFails(t *testing.T) {
+	h := newHarness(t)
+	h.linkedin.replies["/me"] = reply{status: 401}
+	code, _, stderr := h.run("AQEDsecret\najax:42\n", "auth", "import")
+	if code != 1 || !strings.Contains(stderr, "not saved") {
+		t.Errorf("exit %d, stderr %q", code, stderr)
+	}
+	if _, err := os.Stat(filepath.Join(h.stateDir, "session.json")); !os.IsNotExist(err) {
+		t.Error("an unverified session was saved")
+	}
+}
+
+func TestImportFromBrowserUsesNewestSession(t *testing.T) {
+	h := newHarness(t)
+	h.sessions = []auth.Candidate{
+		{Browser: "firefox", Profile: "default", Cookies: map[string]string{"li_at": "new", "JSESSIONID": `"ajax:1"`}},
+		{Browser: "chrome", Cookies: map[string]string{"li_at": "old", "JSESSIONID": `"ajax:2"`}},
+	}
+	out := h.mustRun("", "auth", "import", "--browser", "--no-verify")
+	if !strings.Contains(out, "firefox (default), chrome") || !strings.Contains(out, "Session from firefox (default)") {
+		t.Errorf("import output %q", out)
+	}
+	if len(h.linkedin.requests) != 0 {
+		t.Error("--no-verify must not send requests")
+	}
+
+	for _, args := range [][]string{{"--browser", "firefox"}, {"--browser=firefox"}} {
+		h.browserAsked = ""
+		h.mustRun("", append([]string{"auth", "import", "--no-verify"}, args...)...)
+		if h.browserAsked != "firefox" {
+			t.Errorf("%v searched browser %q", args, h.browserAsked)
+		}
+	}
+	if code, _, _ := h.run("", "auth", "import", "firefox"); code != 2 {
+		t.Error("a browser name without --browser should be a usage error")
+	}
+}
+
+func TestImportFromHARCopiesIdentity(t *testing.T) {
+	h := newHarness(t)
+	ua := "Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0"
+	harFile := filepath.Join(t.TempDir(), "linkedin.har")
+	raw, _ := json.Marshal(map[string]any{"log": map[string]any{"entries": []any{map[string]any{
+		"request": map[string]any{
+			"method": "GET", "url": "https://www.linkedin.com/voyager/api/me",
+			"headers": []any{
+				map[string]string{"name": "User-Agent", "value": ua},
+				map[string]string{"name": "Cookie", "value": `li_at=fromhar; JSESSIONID="ajax:9"`},
+			},
+		},
+		"response": map[string]any{"status": 200, "content": map[string]any{"text": meJSON}},
+	}}}})
+	_ = os.WriteFile(harFile, raw, 0o600)
+
+	out := h.mustRun("", "auth", "import", "--har", harFile)
+	if !strings.Contains(out, "Firefox/140.0") || !strings.Contains(out, "Logged in as Ada Lovelace") {
+		t.Errorf("import output %q", out)
+	}
+	if got := h.linkedin.requests[0].Header["user-agent"][0]; got != ua {
+		t.Errorf("verification used user agent %q", got)
+	}
+	if _, ok := h.linkedin.requests[0].Header["sec-ch-ua"]; ok {
+		t.Error("a Firefox identity must not send Chrome client hints")
+	}
+	if out := h.mustRun("", "identity", "show"); !strings.Contains(out, "firefox 140") || !strings.Contains(out, "har") {
+		t.Errorf("identity output %q", out)
+	}
+	h.mustRun("", "identity", "reset")
+	if out := h.mustRun("", "identity", "show"); !strings.Contains(out, "default") {
+		t.Errorf("identity after reset %q", out)
+	}
+	if out := h.mustRun("", "har", "inspect", harFile); !strings.Contains(out, "/voyager/api/me") {
+		t.Errorf("har inspect output %q", out)
+	}
+	if out := h.mustRun("", "har", "inspect", harFile, "--show", "0"); !strings.Contains(out, `"firstName": "Ada"`) {
+		t.Errorf("har show output %q", out)
+	}
+}
+
+func TestRefreshedCookiesAreSavedAndEndedSessionsRemoved(t *testing.T) {
+	h := newHarness(t)
+	h.importPasted()
+
+	h.linkedin.replies["/me"] = reply{status: 200, body: meJSON, cookies: []string{`lidc="b=new"; Path=/`}}
+	h.mustRun("", "me")
+	raw, _ := os.ReadFile(filepath.Join(h.stateDir, "session.json"))
+	if !strings.Contains(string(raw), `b=new`) {
+		t.Errorf("refreshed cookie not saved: %s", raw)
+	}
+
+	h.linkedin.replies["/me"] = reply{status: 200, body: "{}", cookies: []string{`li_at=delete me; Max-Age=0; Path=/`}}
+	if code, _, stderr := h.run("", "me"); code != 1 || !strings.Contains(stderr, "ended the session") {
+		t.Errorf("exit %d, stderr %q", code, stderr)
+	}
+	if _, err := os.Stat(filepath.Join(h.stateDir, "session.json")); !os.IsNotExist(err) {
+		t.Error("ended session was kept")
+	}
+}
+
+func TestPublishNeedsConfirmation(t *testing.T) {
+	h := newHarness(t)
+	h.importPasted()
+	before := len(h.linkedin.requests)
+
+	out := h.mustRun("no\n", "post", "publish", "--text", "Hello LinkedIn")
+	if !strings.Contains(out, "nothing was published") || len(h.linkedin.requests) != before {
+		t.Errorf("cancelled publish sent requests or said %q", out)
+	}
+
+	out = h.mustRun("publish\n", "post", "publish", "--text", "Hello LinkedIn", "--connections-only")
+	if !strings.Contains(out, "Published: https://www.linkedin.com/feed/update/urn:li:activity:99/") {
+		t.Errorf("publish output %q", out)
+	}
+	last := h.linkedin.bodies[len(h.linkedin.bodies)-1]
+	if !strings.Contains(last, `"text":"Hello LinkedIn"`) || !strings.Contains(last, `"visibleToConnectionsOnly":true`) {
+		t.Errorf("publish payload %s", last)
+	}
+
+	if code, _, stderr := h.run("publish\n", "post", "publish", "--text", "Hi [fill this in]"); code != 1 || !strings.Contains(stderr, "placeholder") {
+		t.Errorf("placeholder post: exit %d, stderr %q", code, stderr)
+	}
+}
+
+func TestOfflinePostCommands(t *testing.T) {
+	h := newHarness(t)
+	file := filepath.Join(t.TempDir(), "post.txt")
+	out := h.mustRun("", "post", "draft", "Shipping", "a", "CLI", "--tone", "technical", "-o", file)
+	if !strings.Contains(out, "A technical lesson worth sharing: Shipping a CLI.") {
+		t.Errorf("draft output %q", out)
+	}
+	if code, out, _ := h.run("", "post", "preview", "--text-file", file); code != 1 || !strings.Contains(out, "Unfilled placeholder") {
+		t.Errorf("preview of an outline: exit %d, %q", code, out)
+	}
+	if out := h.mustRun("", "post", "preview", "--text", "All done. Thoughts?"); !strings.Contains(out, "Ready to publish") {
+		t.Errorf("preview output %q", out)
+	}
+	if code, _, _ := h.run("", "post", "preview", "--text", "a", "--text-file", file); code != 2 {
+		t.Error("--text and --text-file together should be a usage error")
+	}
+	if code, _, _ := h.run("", "post", "publish"); code != 2 {
+		t.Error("publishing without text should be a usage error")
+	}
+	if len(h.linkedin.requests) != 0 {
+		t.Error("offline commands sent requests")
+	}
+}
+
+func TestRateLimitStartsACooldownThatBlocksLaterCommands(t *testing.T) {
+	h := newHarness(t)
+	h.importPasted()
+	h.linkedin.replies["/feed/updatesV2"] = reply{status: 999}
+
+	if code, _, stderr := h.run("", "feed"); code != 1 || !strings.Contains(stderr, "rate-limited") {
+		t.Fatalf("exit %d, stderr %q", code, stderr)
+	}
+	sent := len(h.linkedin.requests)
+	if code, _, stderr := h.run("", "me"); code != 1 || !strings.Contains(stderr, "paused") {
+		t.Errorf("exit %d, stderr %q", code, stderr)
+	}
+	if len(h.linkedin.requests) != sent {
+		t.Error("a request was sent during the cooldown")
+	}
+
+	var usage map[string]any
+	_ = json.Unmarshal([]byte(h.mustRun("", "limits", "--json")), &usage)
+	// The import check and the rate-limited feed request; nothing during the cooldown.
+	if usage["cooldown_until"] == nil || usage["last_day"].(float64) != 2 {
+		t.Errorf("limits %v", usage)
+	}
+	h.mustRun("", "limits", "--clear-cooldown")
+	h.mustRun("", "me")
+}
+
+func TestAPIGetPassesParameters(t *testing.T) {
+	h := newHarness(t)
+	h.importPasted()
+	out := h.mustRun("", "api", "get", "/me", "-p", "a=1", "-p", "v=(x:y)")
+	if !strings.Contains(out, `"firstName": "Ada"`) {
+		t.Errorf("api get output %q", out)
+	}
+	last := h.linkedin.requests[len(h.linkedin.requests)-1]
+	if last.URL.RawQuery != "a=1&v=(x:y)" {
+		t.Errorf("query %q", last.URL.RawQuery)
+	}
+}
+
+func TestLogoutNeedsConfirmation(t *testing.T) {
+	h := newHarness(t)
+	h.importPasted()
+	h.mustRun("no\n", "auth", "logout")
+	if _, err := os.Stat(filepath.Join(h.stateDir, "session.json")); err != nil {
+		t.Fatal("cancelled logout removed the session")
+	}
+	h.mustRun("logout\n", "auth", "logout")
+	if _, err := os.Stat(filepath.Join(h.stateDir, "session.json")); !os.IsNotExist(err) {
+		t.Error("logout kept the session")
+	}
+}

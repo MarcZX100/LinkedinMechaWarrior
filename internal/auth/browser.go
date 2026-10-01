@@ -36,13 +36,19 @@ func (c Candidate) Label() string {
 // first. browser limits the search to one browser by name ("" for all).
 func FindSessions(ctx context.Context, browser string) ([]Candidate, error) {
 	var candidates []Candidate
+	now := time.Now()
 	for _, store := range kooky.FindAllCookieStores(ctx) {
 		if browser != "" && !strings.EqualFold(store.Browser(), browser) {
 			continue
 		}
 		candidate := Candidate{Browser: store.Browser(), Profile: store.Profile(), Cookies: map[string]string{}}
 		domains := map[string]string{}
-		for cookie := range store.TraverseCookies(kooky.Valid, kooky.DomainHasSuffix("linkedin.com")).OnlyCookies() {
+		// Not kooky.Valid: it applies net/http's value rules, which reject the
+		// quotes LinkedIn always puts in JSESSIONID ("ajax:...").
+		for cookie := range store.TraverseCookies(kooky.DomainHasSuffix("linkedin.com")).OnlyCookies() {
+			if !cookie.Expires.IsZero() && cookie.Expires.Before(now) {
+				continue
+			}
 			if !printable(cookie.Value) {
 				// Undecryptable values come back as garbage (e.g. Chrome's
 				// app-bound encryption on Windows); never send those.
