@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "linkedin-mecha-warrior"
-version = "0.1.0"
-description = "Local LinkedIn drafting assistant with Playwright and human review."
+version = "0.2.0"
+description = "A command-line client for LinkedIn built on its internal API and a real browser session."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

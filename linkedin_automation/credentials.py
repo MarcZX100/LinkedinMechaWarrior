@@ -2,13 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .errors import CredentialStoreError
 
 SERVICE_NAME = "linkedin-mecha-warrior"
 DEFAULT_EMAIL_KEY = "__default_linkedin_email__"
-
-
-class CredentialStoreError(RuntimeError):
-    """Raised when the system credential store cannot be used."""
 
 
 @dataclass(frozen=True)
@@ -61,11 +58,15 @@ class CredentialStore:
         self.clear_default_email(email)
 
     def _delete(self, username: str) -> None:
+        """Delete an entry; deleting one that does not exist is not an error."""
+        try:
+            from keyring.errors import PasswordDeleteError
+        except ImportError as exc:
+            raise CredentialStoreError("keyring is not installed. Run `pip install -r requirements.txt`.") from exc
         try:
             self._call("delete_password", self.service_name, username)
         except CredentialStoreError as exc:
-            message = str(exc).lower()
-            if "not found" not in message and "not exist" not in message:
+            if not isinstance(exc.__cause__, PasswordDeleteError):
                 raise
 
     def _call(self, method_name: str, *args):
@@ -83,6 +84,6 @@ class CredentialStore:
         except KeyringError as exc:
             raise CredentialStoreError(
                 "Could not access a secure system keyring. Configure an OS keychain backend, "
-                "or run `linkedin-cli auth --manual` without saved credentials. "
+                "or use `linkedin-cli auth login --manual` without saved credentials. "
                 f"Original error: {exc}"
             ) from exc
