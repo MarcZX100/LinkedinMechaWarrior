@@ -158,6 +158,11 @@ func (f *File) Identity() (identity.Identity, error) {
 				id.HeaderOrder = append(id.HeaderOrder, name)
 			}
 		}
+		if !id.Supported() {
+			return identity.Identity{}, errs.New(errs.Usage,
+				"the HAR was recorded with a browser lmw cannot imitate (%s); only Chrome-based browsers and Firefox are supported",
+				id.UserAgent)
+		}
 		if id.AcceptLanguage == "" {
 			id.AcceptLanguage = "en-US,en;q=0.9"
 		}

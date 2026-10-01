@@ -143,3 +143,12 @@ func TestErrors(t *testing.T) {
 		t.Error("out-of-range entry should fail")
 	}
 }
+
+func TestIdentityRejectsBrowsersWithoutAFingerprint(t *testing.T) {
+	safari := "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"
+	f, _ := Load(writeHAR(t, entry("GET", "https://www.linkedin.com/voyager/api/me", 200,
+		[][2]string{{"user-agent", safari}}, "{}", false)))
+	if _, err := f.Identity(); err == nil || !strings.Contains(err.Error(), "cannot imitate") {
+		t.Errorf("expected a Safari identity to be rejected, got %v", err)
+	}
+}

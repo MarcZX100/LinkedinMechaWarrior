@@ -34,20 +34,24 @@ func (a *app) authImportCommand() *cobra.Command {
 		Long: `Import the LinkedIn session from the browser you normally use.
 
 lmw never logs in by itself: log in to LinkedIn in your browser as usual
-(including 2FA), then import that session. Three ways:
-
-  lmw auth import --browser          read the cookies from an installed browser
-  lmw auth import --browser firefox  ...from a specific browser
-  lmw auth import --har linkedin.har read them from a HAR file, and copy your
-                                     browser's exact identity (recommended)
-  lmw auth import                    paste the li_at and JSESSIONID cookies
-                                     (DevTools > Application > Cookies)
+(including 2FA), then import that session from a HAR file (recommended, it
+also copies your browser's identity), from the browser's cookie store, or by
+pasting the li_at and JSESSIONID cookies.
 
 To record a HAR in Chrome or Edge: open DevTools > Network, reload LinkedIn,
 right-click the request list and choose "Save all as HAR (with sensitive data)".
 In Firefox: Network > gear icon > "Save All As HAR".
 
 The session is checked with one API request and stored in the system keyring.`,
+		Example: `  # From a HAR file recorded in your browser (recommended)
+  lmw auth import --har linkedin.har
+
+  # From the cookie store of an installed browser
+  lmw auth import --browser
+  lmw auth import --browser firefox
+
+  # By pasting the cookies (DevTools > Application > Cookies)
+  lmw auth import`,
 		Args: func(_ *cobra.Command, args []string) error {
 			// "--browser firefox" reaches us as "--browser" (optional value) plus an argument.
 			if len(args) > 1 || (len(args) == 1 && browser != "any") {
@@ -108,7 +112,11 @@ func (a *app) collectCookies(cmd *cobra.Command, browser, harFile string) (map[s
 		if err != nil {
 			return nil, "", err
 		}
-		if id, err := file.Identity(); err == nil {
+		id, err := file.Identity()
+		if err != nil {
+			// The session is still usable; only the identity stays as it was.
+			a.printf("Browser identity not copied: %s\n", err)
+		} else {
 			if err := identity.Save(a.cfg.IdentityFile(), id); err != nil {
 				return nil, "", errs.Wrap(errs.Storage, err, "cannot save the browser identity: %v", err)
 			}

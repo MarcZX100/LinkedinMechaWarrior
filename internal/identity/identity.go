@@ -129,6 +129,13 @@ func (i Identity) Browser() (family string, major int) {
 	return "chrome", DefaultChromeMajor
 }
 
+// Supported reports whether lmw has a TLS fingerprint for the User-Agent's
+// browser. Only Chrome-based browsers and Firefox are supported; claiming to
+// be another browser with a Chrome fingerprint would be inconsistent.
+func (i Identity) Supported() bool {
+	return chromeVersion.MatchString(i.UserAgent) || firefoxVersion.MatchString(i.UserAgent)
+}
+
 // Load reads a saved identity, or returns the default one if none was saved.
 func Load(path string) (Identity, error) {
 	raw, err := os.ReadFile(path)

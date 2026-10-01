@@ -68,15 +68,19 @@ func (a *app) harCommand() *cobra.Command {
 		Long: `Inspect HAR files recorded in your browser's developer tools.
 
 A HAR shows which internal API calls LinkedIn's web app makes, which is how
-commands are built and fixed when LinkedIn changes something:
-
-  1. Open LinkedIn in your browser and open DevTools > Network.
-  2. Go to the page you are interested in (messages, notifications...).
-  3. Save the requests as a HAR file (right-click the request list).
-  4. lmw har inspect linkedin.har            list the API calls
-     lmw har inspect linkedin.har --show 42  print one response
+commands are built and fixed when LinkedIn changes something. To record one,
+open DevTools > Network in your browser, go to the LinkedIn page you are
+interested in, and save the requests as a HAR file (right-click the list).
 
 The file contains private data such as messages; don't share it as-is.`,
+		Example: `  # List the API calls the web app made
+  lmw har inspect linkedin.har
+
+  # Only calls whose URL contains "graphql"
+  lmw har inspect linkedin.har --filter graphql
+
+  # Print the request and response of entry 42
+  lmw har inspect linkedin.har --show 42`,
 	}
 	var filter string
 	show := -1
