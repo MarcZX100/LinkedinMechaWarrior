@@ -49,13 +49,17 @@ func Main() int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 	a := &app{
-		stdin:        bufio.NewReader(os.Stdin),
-		stdinFD:      int(os.Stdin.Fd()),
-		stdout:       os.Stdout,
-		stderr:       os.Stderr,
-		loadConfig:   config.Load,
-		newDoer:      voyager.NewHTTPDoer,
-		newPacer:     defaultPacer,
+		stdin:      bufio.NewReader(os.Stdin),
+		stdinFD:    int(os.Stdin.Fd()),
+		stdout:     os.Stdout,
+		stderr:     os.Stderr,
+		loadConfig: config.Load,
+		newDoer:    voyager.NewHTTPDoer,
+		newPacer: func(cfg config.Config) *pacing.Pacer {
+			p := defaultPacer(cfg)
+			p.Sleep = interruptibleSleep(ctx)
+			return p
+		},
 		newStore:     func(cfg config.Config) session.Store { return session.NewStore(cfg.SessionStore, cfg.SessionFile()) },
 		findSessions: auth.FindSessions,
 	}
@@ -64,6 +68,19 @@ func Main() int {
 
 func defaultPacer(cfg config.Config) *pacing.Pacer {
 	return pacing.New(cfg.RequestLogFile(), cfg.RequestMinDelay, cfg.RequestMaxDelay, cfg.HourlyRequestBudget, cfg.DailyRequestBudget)
+}
+
+// interruptibleSleep lets Ctrl-C end a pacing pause; the request that would
+// follow then fails with the cancelled context.
+func interruptibleSleep(ctx context.Context) func(time.Duration) {
+	return func(d time.Duration) {
+		timer := time.NewTimer(d)
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+		case <-ctx.Done():
+		}
+	}
 }
 
 func (a *app) run(ctx context.Context, args []string) int {

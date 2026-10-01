@@ -375,3 +375,13 @@ func TestLogoutNeedsConfirmation(t *testing.T) {
 		t.Error("logout kept the session")
 	}
 }
+
+func TestInterruptibleSleepStopsOnCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	start := time.Now()
+	interruptibleSleep(ctx)(time.Minute)
+	if time.Since(start) > time.Second {
+		t.Error("sleep was not interrupted")
+	}
+}
